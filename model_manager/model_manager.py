@@ -9,20 +9,23 @@ class ModelManager:
     def launch_model(self, model_name, **kwargs):
 
         if self.running_model is not None:
-            self.stop_model
+            if self.running_model.model_name == model_name:
+                return {"message": f"The model {model_name} is already launched"}
+            else:
+                self.stop_model
 
         if model_name == "detectnet":
-            self.running_model = DetectNet(kwargs["network_name"], kwargs.get("threshold", 0.5))
+            self.running_model = DetectNet(kwargs["network_name"], kwargs["threshold"])
 
         elif model_name == "imagenet":
-            self.running_model = ImageNet(kwargs["network_name"], kwargs.get("topK", 1))
+            self.running_model = ImageNet(kwargs["network_name"], kwargs["topK"])
         else:
-            raise ValueError(f"Model {model_name} not supported")
-        
-        print(f"{model_name} model launched")
+            return {"message": f"{model_name} model not supported"}
+
+        return {"message": f"{model_name} model launched successfully"}
 
     def run_model(self, img):
-        self.running_model.run(self, img)
+        return self.running_model.run(self, img)
 
     def get_state(self):
         if not self.running_model:
@@ -40,8 +43,9 @@ class ModelManager:
     
     def stop_model(self):
         if self.running_model is None: 
-            return f'No model is running'
+            return {"message": "No model is running"}
 
+        model_name = self.running_model.model_name
         self.running_model.stop()
         self.running_model = None
-        return f'Model stopped successfully'
+        return {"message": f"The model {model_name} has been stopped successfully"}

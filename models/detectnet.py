@@ -31,7 +31,20 @@ class DetectNet(ModelBase):
 
         detections = self.__detectnet.Detect(cuda_img)
 
-        return detections   
+        detection_info = [{
+                "detections":{
+                    "ClassID": det.ClassID,
+                    "Confidence": det.Confidence,
+                    "BoundingBox": {
+                        "Left": int(det.Left), 
+                        "Top": int(det.Top),
+                        "Right": int(det.Right),
+                        "Bottom": int(det.Bottom)
+                    }
+                }
+            } for det in detections]
+
+        return detection_info   
 
     def stop(self):
         self.__is_running = False

@@ -33,18 +33,19 @@ async def handle_client(websocket, path):
 async def launch_model(websocket, data):
     try:
         model_name = data.get('model')
-        network_name = data.get('network')
-        threshold = data.get('threshold', 0.5)  # Only for detectNet
-        topK = data.get('topK', 1)  # Only for imageNet
         
         if model_name == "detectnet":
-            manager.launch_model(model_name, network_name=network_name, threshold=threshold)
+            threshold = data.get('threshold', 0.5)  # default = 0.5
+            network_name = data.get('network', 'ssd-mobilenet-v2') # default ssd-mobilenet-v2
+            response = manager.launch_model(model_name, network_name=network_name, threshold=threshold)
         elif model_name == "imagenet":
-            manager.launch_model(model_name, network_name=network_name, topK=topK)
+            network_name = data.get('network', 'googlenet') # default googlenet
+            topK = data.get('topK', 1)  # default = 1
+            response = manager.launch_model(model_name, network_name=network_name, topK=topK)
         else:
             raise ValueError(f"Model {model_name} is not supported")
 
-        await websocket.send(json.dumps({"message": f"{model_name} model launched successfully"}))
+        await websocket.send(json.dumps(response))
     
     except Exception as e:
         await websocket.send(json.dumps({"error": str(e)}))
@@ -68,7 +69,7 @@ async def get_info(websocket):
 async def stop_model(websocket):
     try:
         response = manager.stop_model()
-        await websocket.send(json.dumps({"message": str(response)}))
+        await websocket.send(json.dumps(response))
     except Exception as e:
         await websocket.send(json.dumps({"error": str(e)}))
 
@@ -81,20 +82,8 @@ async def handle_image_frame(websocket, data):
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
         if manager.running_model:
-            detections = manager.running_model.run(img)
-
-            detection_info = [{
-                "ClassID": det.ClassID,
-                "Confidence": det.Confidence,
-                "BoundingBox": {
-                    "Left": int(det.Left), 
-                    "Top": int(det.Top),
-                    "Right": int(det.Right),
-                    "Bottom": int(det.Bottom)
-                }
-            } for det in detections]
-            
-            await websocket.send(json.dumps({"detections": detection_info}))
+            result_info = manager.running_model.run(img)     
+            await websocket.send(json.dumps(result_info))
         else:
             await websocket.send(json.dumps({"error": "No model is currently running"}))
     except Exception as e:
