@@ -13,8 +13,16 @@ MODELS = ['detectnet', 'imagenet']
 #Handle actions with the client
 async def handle_client(websocket, path):
     async for message in websocket:
+
         data = json.loads(message)
-        action = data.get('action')
+
+        if isinstance(data, dict):
+            action = data['action']
+        else:
+            action = data.get("action")
+
+        # Print the message received from the client
+        print(f"Message received from client {websocket.remote_address}: " "action: " f"{action}")
 
         if action == "launch_model":
             await launch_model(websocket, data)
