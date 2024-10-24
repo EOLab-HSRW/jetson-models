@@ -1,12 +1,7 @@
 from abc import ABC, abstractmethod
 
-#Template Abstract ModelBase
-class ModelBase(ABC):
-
-    @property
-    @abstractmethod
-    def is_running(self):
-        pass
+#Template Abstract BaseModel
+class BaseModel(ABC):
 
     @property
     @abstractmethod
@@ -19,7 +14,7 @@ class ModelBase(ABC):
         pass
 
     @abstractmethod
-    def run(self, img, overlay=None):
+    def run(self, img):
         raise NotImplementedError()
     
     def stop(self):

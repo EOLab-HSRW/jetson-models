@@ -1,21 +1,16 @@
 import sys
 import jetson_utils
 import jetson_inference
-from models.model_base import ModelBase
+from models.base_model import BaseModel
 
 #DetectNet Class
-class DetectNet(ModelBase):
+class DetectNet(BaseModel):
 
     def __init__(self, network_name, threshold):
         super().__init__()
-        self.__is_running = True
         self.__model_name = "detectnet"
         self.__network_name = network_name
         self.__detectnet = jetson_inference.detectNet(network_name, sys.argv, threshold)
-
-    @property
-    def is_running(self):
-        return self.__is_running
 
     @property
     def model_name(self):
@@ -27,6 +22,8 @@ class DetectNet(ModelBase):
 
     def run(self, img):
 
+        img_height, img_width = img.shape[:2]
+
         cuda_img = jetson_utils.cudaFromNumpy(img)
 
         detections = self.__detectnet.Detect(cuda_img)
@@ -36,10 +33,10 @@ class DetectNet(ModelBase):
                     "ClassID": det.ClassID,
                     "Confidence": det.Confidence,
                     "BoundingBox": {
-                        "Left": int(det.Left), 
-                        "Top": int(det.Top),
-                        "Right": int(det.Right),
-                        "Bottom": int(det.Bottom)
+                        "Left": round(det.Left / img_width, 4),
+                        "Top": round(det.Top / img_height, 4), 
+                        "Right": round(det.Right / img_width, 4),
+                        "Bottom": round(det.Bottom / img_height, 4)
                     }
                 }
             } for det in detections]
@@ -47,6 +44,6 @@ class DetectNet(ModelBase):
         return detection_info   
 
     def stop(self):
-        self.__is_running = False
+        self.__detectnet = None
         print("DetecNet model stopped")
 

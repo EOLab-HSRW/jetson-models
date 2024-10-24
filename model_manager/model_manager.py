@@ -30,13 +30,13 @@ class ModelManager:
     def get_state(self):
         if not self.running_model:
             return {
-                "is_running": "none",
+                "is_running": False,
                 "model_name": None,
                 "network_name": None
             }
         
         return {
-            "is_running": self.running_model.is_running,
+            "is_running": True,
             "model_name": self.running_model.model_name,
             "network_name": self.running_model.network_name
         }

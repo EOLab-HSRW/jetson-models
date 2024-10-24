@@ -1,19 +1,14 @@
 import sys
 import jetson_utils
 import jetson_inference
-from models.model_base import ModelBase
+from models.base_model import BaseModel
 
 #ImageNet Class
-class ImageNet(ModelBase):
+class ImageNet(BaseModel):
     def __init__(self, network_name, topK):
-        self.__is_running = False
         self.__model_name = "imagenet"
         self.__network_name = network_name
         self.__imagenet = jetson_inference.imageNet(network_name, topK)
-
-    @property
-    def is_running(self):
-        return self.__is_running
 
     @property
     def model_name(self):
@@ -30,16 +25,18 @@ class ImageNet(ModelBase):
         predictions = self.__imagenet.Classify(cuda_img)
 
         classID, confidence = predictions
+        classLabel = self.__imagenet.GetClassLabel(classID)
 
         predictions_info = [{
                 "predictions": {
                     "ClassID": classID,
-                    "Confidence": confidence
+                    "ClassLabel": classLabel,
+                    "Confidence": confidence * 100                 
                     }
                 }]
 
         return predictions_info
 
     def stop(self):
-        self.__is_running = False
+        self.__imagenet = None
         print("ImageNet model stopped")
