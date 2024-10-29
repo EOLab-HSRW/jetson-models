@@ -10,7 +10,7 @@ class BaseModel(ABC):
 
     @property
     @abstractmethod
-    def network_name(self):
+    def variant(self):
         pass
 
     @abstractmethod

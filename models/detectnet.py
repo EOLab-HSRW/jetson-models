@@ -1,24 +1,39 @@
-import sys
 import jetson_utils
 import jetson_inference
 from models.base_model import BaseModel
 
 #DetectNet Class
-class DetectNet(BaseModel):
+class detectnet(BaseModel):
 
-    def __init__(self, network_name, threshold):
-        super().__init__()
-        self.__model_name = "detectnet"
-        self.__network_name = network_name
-        self.__detectnet = jetson_inference.detectNet(network_name, sys.argv, threshold)
+#region Constructor
 
+    def __init__(self, data):
+            super().__init__()
+
+            try:
+                self.__model_name = data.get('model')
+                self.__variant = data.get('variant', "ssd-mobilenet-v2")
+                threshold = data.get('threshold', 0.5)
+                self.__overlay = data.get('overlay', 'box,labels,conf')
+                
+                self.__detectnet = jetson_inference.detectNet(network=self.__variant, threshold=threshold)
+
+            except Exception as e:
+                print(f"Error inizializing the model: {str(e)}")
+
+#endregion
+       
+#region Properties
     @property
     def model_name(self):
         return self.__model_name
 
     @property
-    def network_name(self):
-        return self.__network_name
+    def variant(self):
+        return self.__variant
+#endregion
+
+#region Methods
 
     def run(self, img):
 
@@ -26,7 +41,7 @@ class DetectNet(BaseModel):
 
         cuda_img = jetson_utils.cudaFromNumpy(img)
 
-        detections = self.__detectnet.Detect(cuda_img)
+        detections = self.__detectnet.Detect(cuda_img, overlay=self.__overlay)
 
         detection_info = [{
                 "detections":{
@@ -45,5 +60,7 @@ class DetectNet(BaseModel):
 
     def stop(self):
         self.__detectnet = None
-        print("DetecNet model stopped")
+        print("detecnet model stopped")
+
+#endregion   
 
