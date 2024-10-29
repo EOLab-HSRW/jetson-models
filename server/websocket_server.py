@@ -40,18 +40,8 @@ async def handle_client(websocket, path):
 #WebSocket to launch the model
 async def launch_model(websocket, data):
     try:
-        model_name = data.get('model')
-        
-        if model_name == "detectnet":
-            threshold = data.get('threshold', 0.5)  # default = 0.5
-            network_name = data.get('network', 'ssd-mobilenet-v2') # default ssd-mobilenet-v2
-            response = manager.launch_model(model_name, network_name=network_name, threshold=threshold)
-        elif model_name == "imagenet":
-            network_name = data.get('network', 'googlenet') # default googlenet
-            topK = data.get('topK', 1)  # default = 1
-            response = manager.launch_model(model_name, network_name=network_name, topK=topK)
-        else:
-            raise ValueError(f"Model {model_name} is not supported")
+
+        response = manager.launch_model(data)
 
         await websocket.send(json.dumps(response))
     
