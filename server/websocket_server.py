@@ -7,9 +7,6 @@ from  model_manager.model_manager import ModelManager
 # Create an instance of the model manager
 manager = ModelManager()
 
-# Available models list
-MODELS = ['detectnet', 'imagenet']
-
 #Handle actions with the client
 async def handle_client(websocket, path):
     async for message in websocket:
@@ -40,26 +37,24 @@ async def handle_client(websocket, path):
 #WebSocket to launch the model
 async def launch_model(websocket, data):
     try:
-
         response = manager.launch_model(data)
-
-        await websocket.send(json.dumps(response))
-    
+        await websocket.send(json.dumps(response))  
     except Exception as e:
         await websocket.send(json.dumps({"error": str(e)}))
 
 #WebSocket to get the current model state
 async def get_state(websocket):
     try:
-        state = manager.get_state()
-        await websocket.send(json.dumps({"state": state}))
+        response = manager.get_state()
+        await websocket.send(json.dumps(response))
     except Exception as e:
         await websocket.send(json.dumps({"error": str(e)}))
 
 #WebSocket to know about the available models
 async def get_info(websocket):
     try:
-        await websocket.send(json.dumps({"models": MODELS}))
+        response = manager.models_info()
+        await websocket.send(json.dumps(response))
     except Exception as e:
         await websocket.send(json.dumps({"error": str(e)}))
 
