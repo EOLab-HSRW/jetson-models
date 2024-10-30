@@ -14,8 +14,17 @@ class BaseModel(ABC):
         pass
 
     @abstractmethod
+    def launch(self, data):
+        raise NotImplementedError()
+
+    @abstractmethod
     def run(self, img):
         raise NotImplementedError()
     
+    @abstractmethod
     def stop(self):
+        raise NotImplementedError()
+    
+    @abstractmethod
+    def info(self):
         raise NotImplementedError()

@@ -8,18 +8,7 @@ class detectnet(BaseModel):
 #region Constructor
 
     def __init__(self, data):
-            super().__init__()
-
-            try:
-                self.__model_name = data.get('model')
-                self.__variant = data.get('variant', "ssd-mobilenet-v2")
-                threshold = data.get('threshold', 0.5)
-                self.__overlay = data.get('overlay', 'box,labels,conf')
-                
-                self.__detectnet = jetson_inference.detectNet(network=self.__variant, threshold=threshold)
-
-            except Exception as e:
-                print(f"Error inizializing the model: {str(e)}")
+        super().__init__()
 
 #endregion
        
@@ -34,6 +23,19 @@ class detectnet(BaseModel):
 #endregion
 
 #region Methods
+
+    def launch(self, data):
+
+        try:
+            self.__model_name = data.get('model')
+            self.__variant = data.get('variant', "ssd-mobilenet-v2")
+            self.__threshold = data.get('threshold', 0.5)
+            self.__overlay = data.get('overlay', 'box,labels,conf')
+
+            self.__detectnet = jetson_inference.detectNet(network=self.__variant, threshold=self.__threshold)
+
+        except Exception as e:
+            print(f"Error inizializing the model: {str(e)}")
 
     def run(self, img):
 
@@ -61,6 +63,22 @@ class detectnet(BaseModel):
     def stop(self):
         self.__detectnet = None
         print("detecnet model stopped")
+
+    def info(self):
+        description = "Locate objects in a live camera stream using an object detection DNN."
+        variant = "variant, type=str, default=ssd-mobilenet-v2, help=pre-trained model to load"
+        overlay = "overlay, type=str, default=box,labels,conf, help=detection overlay flags (e.g. --overlay=box,labels,conf)\nvalid combinations are:  'box', 'labels', 'conf', 'none'"
+        threshold = "threshold, type=float, default=0.5, help=minimum detection threshold to use"
+
+        info = {"detectnet":{
+                "description": description,
+                "variant": variant,
+                "overlay": overlay,
+                "threshold": threshold
+                }
+            }
+
+        return info
 
 #endregion   
 

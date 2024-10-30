@@ -10,16 +10,6 @@ class imagenet(BaseModel):
     def __init__(self, data):
         super().__init__()
 
-        try:
-            self.__model_name = data.get('model')
-            self.__variant = data.get('variant', "googlenet")
-            self.__topK = data.get('topK', 1)
-
-            self.__imagenet = jetson_inference.imageNet(self.__variant)
-
-        except Exception as e:
-            print(f"Error inizializing the model: {str(e)}")
-
 #endregion
 
 #region Properties
@@ -35,6 +25,18 @@ class imagenet(BaseModel):
 #endregion
 
 #region Methods
+
+    def launch(self, data):
+
+        try:
+            self.__model_name = data.get('model')
+            self.__variant = data.get('variant', "googlenet")
+            self.__topK = data.get('topK', 1)
+
+            self.__imagenet = jetson_inference.imageNet(self.__variant)
+
+        except Exception as e:
+            print(f"Error inizializing the model: {str(e)}")
 
     def run(self, img):
 
@@ -59,5 +61,19 @@ class imagenet(BaseModel):
     def stop(self):
         self.__imagenet = None
         print("imagenet model stopped")
+
+    def info(self):
+        description = "Classify a live camera stream using an image recognition DNN."
+        variant = "variant, type=str, default=googlenet, help=pre-trained model to load"
+        topK = "topK, type=int, default=1, help=show the topK number of class predictions"
+
+        info = {"imagenet":{
+                "description": description,
+                "variant": variant,
+                "topK": topK
+                }
+            }
+
+        return info
 
 #endregion
