@@ -1,10 +1,10 @@
 import importlib
+from pathlib import Path
 
 class ModelManager:
 
     def __init__(self):
         self.running_model = None
-
 
     def launch_model(self, data):
 
@@ -18,14 +18,16 @@ class ModelManager:
             model_module = importlib.import_module(f"models.{model_name.lower()}")
             model_class = getattr(model_module, model_name.lower())
 
-            # Initialize model with the provided data
-            self.running_model = model_class(data)
+            # Instantiate a temporary object to call its info method
+            model_instance = model_class({})
+            model_instance.launch(data)
+
+            self.running_model = model_instance
 
             return {"message": f"{model_name} model launched successfully"}
         
         except (ModuleNotFoundError, AttributeError) as e:
             return {"error": f"Model {model_name} is not supported or failed to load. Error: {str(e)}"}
-
 
     def run_model(self, img):
         if not self.running_model:
@@ -38,17 +40,19 @@ class ModelManager:
 
     def get_state(self):
         if not self.running_model:
-            return {
-                "is_running": False,
-                "model_name": None,
-                "variant": None
-            }
+            return {"state": {
+                        "is_running": False,
+                        "model_name": None,
+                        "variant": None
+                    } 
+                }
         
-        return {
-            "is_running": True,
-            "model_name": self.running_model.model_name,
-            "variant": self.running_model.variant
-        }
+        return {"state": {
+                    "is_running": True,
+                    "model_name": self.running_model.model_name,
+                    "variant": self.running_model.variant
+                } 
+            }
     
     def stop_model(self):
         if self.running_model is None: 
@@ -58,3 +62,26 @@ class ModelManager:
         self.running_model.stop()
         self.running_model = None
         return {"message": f"The model {model_name} has been stopped successfully"}
+
+    def models_info(self):
+
+        models_info = {}
+        models_dir = Path(__file__).resolve().parent.parent / "models"
+
+        for file in models_dir.glob("*.py"):
+
+            model_name = str(file.stem).lower()
+            if model_name == "base_model": 
+                continue
+
+            model_module = importlib.import_module(f"models.{model_name}")
+            model_class = getattr(model_module, model_name)  
+
+            # Instantiate a temporary object to call its info method
+            model_instance = model_class({})
+            model_info = model_instance.info()
+
+            # Add info of the model class to the dictionary
+            models_info[model_name] = model_info[model_name]
+
+        return {"models": models_info}
