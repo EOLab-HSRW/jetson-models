@@ -9,17 +9,20 @@ class ModelManager:
     def launch_model(self, data):
 
         try:
-            model_name = data.get('model')
+            model_name = str(data.get('model')).lower()
+
+            if model_name == "base_model": 
+                return {"message": f"Model {model_name} is not supported"}
 
             if self.running_model is not None and self.running_model.model_name == model_name:
                 return {"message": f"The model {model_name} is already launched"}
 
             #Getting the model class
-            model_module = importlib.import_module(f"models.{model_name.lower()}")
-            model_class = getattr(model_module, model_name.lower())
+            model_module = importlib.import_module(f"models.{model_name}")
+            model_class = getattr(model_module, model_name)
 
             # Instantiate a temporary object to call its info method
-            model_instance = model_class({})
+            model_instance = model_class()
             model_instance.launch(data)
 
             self.running_model = model_instance
@@ -75,11 +78,8 @@ class ModelManager:
                 continue
 
             model_module = importlib.import_module(f"models.{model_name}")
-            model_class = getattr(model_module, model_name)  
-
-            # Instantiate a temporary object to call its info method
-            model_instance = model_class({})
-            model_info = model_instance.info()
+            model_class = getattr(model_module, model_name) 
+            model_info = model_class.info()
 
             # Add info of the model class to the dictionary
             models_info[model_name] = model_info[model_name]
