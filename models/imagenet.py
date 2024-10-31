@@ -7,7 +7,7 @@ class imagenet(BaseModel):
 
 #region Constructor
 
-    def __init__(self, data):
+    def __init__(self):
         super().__init__()
 
 #endregion
@@ -62,15 +62,21 @@ class imagenet(BaseModel):
         self.__imagenet = None
         print("imagenet model stopped")
 
-    def info(self):
-        description = "Classify a live camera stream using an image recognition DNN."
-        variant = "variant, type=str, default=googlenet, help=pre-trained model to load"
-        topK = "topK, type=int, default=1, help=show the topK number of class predictions"
+    def info():
 
         info = {"imagenet":{
-                "description": description,
-                "variant": variant,
-                "topK": topK
+                "description": "Classify a live camera stream using an image recognition DNN.",
+                "variant": {
+                    "type": "string",
+                    "default": "googlenet",
+                    "help": "pre-trained model to load",
+                    "options": ["alexnet", "googlenet", "googlenet-12", "resnet-18", "resnet-50", "resnet-101", "resnet-152", "vgg-16", "vgg-19", "inception-v4"]
+                },
+                "topK": {
+                    "type": "integer",
+                    "default": 1,
+                    "help": "show the topK number of class predictions"
+                }
                 }
             }
 

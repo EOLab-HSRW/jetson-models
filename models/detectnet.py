@@ -7,7 +7,7 @@ class detectnet(BaseModel):
 
 #region Constructor
 
-    def __init__(self, data):
+    def __init__(self):
         super().__init__()
 
 #endregion
@@ -64,17 +64,26 @@ class detectnet(BaseModel):
         self.__detectnet = None
         print("detecnet model stopped")
 
-    def info(self):
-        description = "Locate objects in a live camera stream using an object detection DNN."
-        variant = "variant, type=str, default=ssd-mobilenet-v2, help=pre-trained model to load"
-        overlay = "overlay, type=str, default=box,labels,conf, help=detection overlay flags (e.g. --overlay=box,labels,conf)\nvalid combinations are:  'box', 'labels', 'conf', 'none'"
-        threshold = "threshold, type=float, default=0.5, help=minimum detection threshold to use"
+    def info():
 
         info = {"detectnet":{
-                "description": description,
-                "variant": variant,
-                "overlay": overlay,
-                "threshold": threshold
+                "description": "Locate objects in a live camera stream using an object detection DNN.",
+                "variant": {
+                    "type": "string",
+                    "default": "ssd-mobilenet-v2",
+                    "help": "pre-trained model to load",
+                    "options": ["ssd-mobilenet-v1", "ssd-mobilenet-v2", "ssd-inception-v2", "peoplenet", "peoplenet-pruned", "dashcamnet", "trafficcamnet", "facedetect"]
+                },
+                "overlay": {
+                    "type": "string",
+                    "default": "box,labels,conf",
+                    "help": "detection overlay flags (e.g. --overlay=box,labels,conf)\nvalid combinations are:  'box', 'labels', 'conf', 'none'"
+                },
+                "threshold": {
+                    "type": "float",
+                    "default": 0.5,
+                    "help": "minimum detection threshold to use"
+                }
                 }
             }
 

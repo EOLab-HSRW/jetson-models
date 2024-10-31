@@ -25,6 +25,7 @@ class BaseModel(ABC):
     def stop(self):
         raise NotImplementedError()
     
+    @staticmethod
     @abstractmethod
-    def info(self):
+    def info():
         raise NotImplementedError()
