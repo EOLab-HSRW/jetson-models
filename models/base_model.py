@@ -27,5 +27,5 @@ class BaseModel(ABC):
     
     @staticmethod
     @abstractmethod
-    def info():
+    def get_opts():
         raise NotImplementedError()

@@ -1,5 +1,6 @@
 import jetson_utils
 import jetson_inference
+from utils.utils import create_option
 from models.base_model import BaseModel
 
 #DetectNet Class
@@ -64,26 +65,26 @@ class detectnet(BaseModel):
         self.__detectnet = None
         print("detecnet model stopped")
 
-    def info():
+    def get_opts():
 
         info = {"detectnet":{
                 "description": "Locate objects in a live camera stream using an object detection DNN.",
-                "variant": {
-                    "type": "string",
-                    "default": "ssd-mobilenet-v2",
-                    "help": "pre-trained model to load",
-                    "options": ["ssd-mobilenet-v1", "ssd-mobilenet-v2", "ssd-inception-v2", "peoplenet", "peoplenet-pruned", "dashcamnet", "trafficcamnet", "facedetect"]
-                },
-                "overlay": {
-                    "type": "string",
-                    "default": "box,labels,conf",
-                    "help": "detection overlay flags (e.g. --overlay=box,labels,conf)\nvalid combinations are:  'box', 'labels', 'conf', 'none'"
-                },
-                "threshold": {
-                    "type": "float",
-                    "default": 0.5,
-                    "help": "minimum detection threshold to use"
-                }
+                "variant": create_option(
+                    type_ = "string",
+                    default="ssd-mobilenet-v2",
+                    help="pre-trained model to load",
+                    options=["ssd-mobilenet-v1", "ssd-mobilenet-v2", "ssd-inception-v2", "peoplenet", "peoplenet-pruned", "dashcamnet", "trafficcamnet", "facedetect"]
+                ),
+                "overlay": create_option(
+                    type_ = "string",
+                    default="box,labels,conf",
+                    help="detection overlay flags (e.g. --overlay=box,labels,conf)\nvalid combinations are:  'box', 'labels', 'conf', 'none'",
+                ),
+                "threshold": create_option(
+                    type_ = "float",
+                    default= 0.5,
+                    help="minimum detection threshold to use",
+                )        
                 }
             }
 

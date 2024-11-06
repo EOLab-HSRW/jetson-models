@@ -1,5 +1,6 @@
 import jetson_utils
 import jetson_inference
+from utils.utils import create_option
 from models.base_model import BaseModel
 
 #ImageNet Class
@@ -62,21 +63,21 @@ class imagenet(BaseModel):
         self.__imagenet = None
         print("imagenet model stopped")
 
-    def info():
+    def get_opts():
 
         info = {"imagenet":{
                 "description": "Classify a live camera stream using an image recognition DNN.",
-                "variant": {
-                    "type": "string",
-                    "default": "googlenet",
-                    "help": "pre-trained model to load",
-                    "options": ["alexnet", "googlenet", "googlenet-12", "resnet-18", "resnet-50", "resnet-101", "resnet-152", "vgg-16", "vgg-19", "inception-v4"]
-                },
-                "topK": {
-                    "type": "integer",
-                    "default": 1,
-                    "help": "show the topK number of class predictions"
-                }
+                "variant": create_option(
+                    type_ = "string",
+                    default="googlenet",
+                    help="Pre-trained model to load",
+                    options=["alexnet", "googlenet", "googlenet-12", "resnet-18", "resnet-50", "resnet-101", "resnet-152", "vgg-16", "vgg-19", "inception-v4"]
+                ),
+                "topK": create_option(
+                    type_ = "integer",
+                    default= 1,
+                    help="show the topK number of class predictions"
+                )
                 }
             }
 

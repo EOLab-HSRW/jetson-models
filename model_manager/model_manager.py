@@ -81,7 +81,7 @@ class ModelManager:
         self.running_model = None
         return {"message": f"The model {model_name} has been stopped successfully"}
 
-    def models_info(self):
+    def get_info(self):
 
         models_info = {}
         models_dir = Path(__file__).resolve().parent.parent / "models"
@@ -94,7 +94,7 @@ class ModelManager:
 
             model_module = importlib.import_module(f"models.{model_name}")
             model_class = getattr(model_module, model_name) 
-            model_info = model_class.info()
+            model_info = model_class.get_opts()
 
             # Add info of the model class to the dictionary
             models_info[model_name] = model_info[model_name]
@@ -143,7 +143,7 @@ class ModelManager:
                 elif action == "stop_model":
                     await self.ws_stop_model(websocket)
                 elif action == "image_frame":
-                    await self.ws_handle_image_frame(websocket, data)
+                    await self.handle_image_frame(websocket, data)
                 else:
                     await websocket.send(json.dumps({"error": "Invalid action"}))
 
@@ -173,7 +173,7 @@ class ModelManager:
     #WebSocket to know about the available models
     async def ws_get_info(self, websocket):
         try:
-            response = self.models_info()
+            response = self.get_info()
             await websocket.send(json.dumps(response))
         except Exception as e:
             await websocket.send(json.dumps({"error": str(e)}))
@@ -187,7 +187,7 @@ class ModelManager:
             await websocket.send(json.dumps({"error": str(e)}))
 
     #WebSocket to manage all the frames when a model is running
-    async def ws_handle_image_frame(self, websocket, data):
+    async def handle_image_frame(self, websocket, data):
         try:
             response = self.run_model(data)
             await websocket.send(json.dumps(response))  
