@@ -70,18 +70,18 @@ class detectnet(BaseModel):
         info = {"detectnet":{
                 "description": "Locate objects in a live camera stream using an object detection DNN.",
                 "variant": create_option(
-                    type_ = "string",
-                    default="ssd-mobilenet-v2",
+                    typ = str,
+                    default= "ssd-mobilenet-v2",
                     help="pre-trained model to load",
                     options=["ssd-mobilenet-v1", "ssd-mobilenet-v2", "ssd-inception-v2", "peoplenet", "peoplenet-pruned", "dashcamnet", "trafficcamnet", "facedetect"]
                 ),
                 "overlay": create_option(
-                    type_ = "string",
+                    typ = str,
                     default="box,labels,conf",
                     help="detection overlay flags (e.g. --overlay=box,labels,conf)\nvalid combinations are:  'box', 'labels', 'conf', 'none'",
                 ),
                 "threshold": create_option(
-                    type_ = "float",
+                    typ = float,
                     default= 0.5,
                     help="minimum detection threshold to use",
                 )        

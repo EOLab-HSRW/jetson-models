@@ -68,13 +68,13 @@ class imagenet(BaseModel):
         info = {"imagenet":{
                 "description": "Classify a live camera stream using an image recognition DNN.",
                 "variant": create_option(
-                    type_ = "string",
+                    typ = str,
                     default="googlenet",
                     help="Pre-trained model to load",
                     options=["alexnet", "googlenet", "googlenet-12", "resnet-18", "resnet-50", "resnet-101", "resnet-152", "vgg-16", "vgg-19", "inception-v4"]
                 ),
                 "topK": create_option(
-                    type_ = "integer",
+                    typ = int,
                     default= 1,
                     help="show the topK number of class predictions"
                 )
