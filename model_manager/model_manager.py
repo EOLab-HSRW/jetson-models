@@ -15,91 +15,125 @@ class ModelManager:
 
 #region Model Manager Methods
 
-    def launch_model(self, data):
-
+    #endpoint to launch tthe model
+    async def launch(self, websocket, data):
         try:
-            model_name = str(data['model']).lower()
 
-            if model_name == "base_model": 
-                return {"message": f"Model {model_name} is not supported"}
+            try:
+                model_name = str(data['model']).lower()
 
-            if self.running_model is not None and self.running_model.model_name == model_name:
-                return {"message": f"The model {model_name} is already launched"}
+                if model_name == "base_model": 
+                    response = {"message": f"Model {model_name} is not supported"}
 
-            #Getting the model class
-            model_module = importlib.import_module(f"models.{model_name}")
-            model_class = getattr(model_module, model_name)
+                if self.running_model is not None and self.running_model.model_name == model_name:
+                    response =  {"message": f"The model {model_name} is already launched"}
 
-            # Instantiate a temporary object to call its info method
-            model_instance = model_class()
-            model_instance.launch(data)
+                #Getting the model class
+                model_module = importlib.import_module(f"models.{model_name}")
+                model_class = getattr(model_module, model_name)
 
-            self.running_model = model_instance
+                # Instantiate a temporary object to call its info method
+                model_instance = model_class()
+                model_instance.launch(data)
 
-            return {"message": f"{model_name} model launched successfully"}
-        
-        except (ModuleNotFoundError, AttributeError) as e:
-            return {"error": f"Model {model_name} is not supported or failed to load. Error: {str(e)}"}
+                self.running_model = model_instance
 
-    def run_model(self, data):
-        
-        try:
-            if not self.running_model:
-                return {"error": "No model is currently running"}
+                response = {"message": f"{model_name} model launched successfully"}
+            
+            except (ModuleNotFoundError, AttributeError) as e:
+                response = {"error": f"Model {model_name} is not supported or failed to load. Error: {str(e)}"}            
 
-            img_str = data['image']
-            img_data = base64.b64decode(img_str)
-            np_arr = np.frombuffer(img_data, np.uint8)
-            img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            await websocket.send(json.dumps(response))  
 
-            return self.running_model.run(img)   
         except Exception as e:
-            return {"error": f"Error during model execution: {str(e)}"}
+            await websocket.send(json.dumps({"error": str(e)}))
 
-    def get_state(self):
-        if not self.running_model:
-            return {"state": {
-                        "is_running": False,
-                        "model_name": None,
-                        "variant": None
-                    } 
-                }
-        
-        return {"state": {
-                    "is_running": True,
-                    "model_name": self.running_model.model_name,
-                    "variant": self.running_model.variant
-                } 
-            }
-    
-    def stop_model(self):
-        if self.running_model is None: 
-            return {"message": "No model is running"}
+    #endpoint to get the current model state
+    async def get_state(self, websocket):
 
-        model_name = self.running_model.model_name
-        self.running_model.stop()
-        self.running_model = None
-        return {"message": f"The model {model_name} has been stopped successfully"}
+        try:
 
-    def get_info(self):
+            if not self.running_model:
+                response = {"state": {
+                            "is_running": False,
+                            "model_name": None,
+                            "variant": None
+                        } 
+                    }
+            else:
+                response = {"state": {
+                            "is_running": True,
+                            "model_name": self.running_model.model_name,
+                            "variant": self.running_model.variant
+                        } 
+                    }
 
-        models_info = {}
-        models_dir = Path(__file__).resolve().parent.parent / "models"
+            await websocket.send(json.dumps(response))
+        except Exception as e:
+            await websocket.send(json.dumps({"error": str(e)}))
 
-        for file in models_dir.glob("*.py"):
+    #endpoint to know about the available models in the manager
+    async def get_info(self, websocket):
+        try:
 
-            model_name = str(file.stem).lower()
-            if model_name == "base_model": 
-                continue
+            models_info = {}
+            models_dir = Path(__file__).resolve().parent.parent / "models"
 
-            model_module = importlib.import_module(f"models.{model_name}")
-            model_class = getattr(model_module, model_name) 
-            model_info = model_class.get_opts()
+            for file in models_dir.glob("*.py"):
 
-            # Add info of the model class to the dictionary
-            models_info[model_name] = model_info[model_name]
+                model_name = str(file.stem).lower()
+                if model_name == "base_model": 
+                    continue
 
-        return {"models": models_info}
+                model_module = importlib.import_module(f"models.{model_name}")
+                model_class = getattr(model_module, model_name) 
+                model_info = model_class.get_opts()
+
+                # Add info of the model class to the dictionary
+                models_info[model_name] = model_info[model_name]
+
+            response = {"models": models_info}
+
+            await websocket.send(json.dumps(response))
+        except Exception as e:
+            await websocket.send(json.dumps({"error": str(e)}))
+
+    #endpoint to stop the current model
+    async def stop(self, websocket):
+        try:
+
+            if self.running_model is None: 
+                response = {"message": "No model is running"}
+            else:
+                model_name = self.running_model.model_name
+                self.running_model.stop()
+                self.running_model = None
+                response = {"message": f"The model {model_name} has been stopped successfully"}
+
+            await websocket.send(json.dumps(response))
+        except Exception as e:
+            await websocket.send(json.dumps({"error": str(e)}))
+
+    #endpoint to manage all the frames when a model is running
+    async def handle_image_frame(self, websocket, data):
+        try:
+
+            try:
+                if not self.running_model:
+                    response = {"error": "No model is currently running"}
+
+                img_str = data['image']
+                img_data = base64.b64decode(img_str)
+                np_arr = np.frombuffer(img_data, np.uint8)
+                img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+                response = self.running_model.run(img)   
+            except Exception as e:
+                response = {"error": f"Error during model execution: {str(e)}"}
+
+            await websocket.send(json.dumps(response))  
+        except Exception as e:
+            await websocket.send(json.dumps({"error": str(e)}))
 
 #endregion  
 
@@ -134,14 +168,14 @@ class ModelManager:
                 # Print the message received from the client
                 print(f"Message received from client {websocket.remote_address}: " "action: " f"{action}")
 
-                if action == "launch_model":
-                    await self.ws_launch_model(websocket, data)
+                if action == "launch":
+                    await self.launch(websocket, data)
                 elif action == "get_state":
-                    await self.ws_get_state(websocket)
+                    await self.get_state(websocket)
                 elif action == "get_info":
-                    await self.ws_get_info(websocket)
-                elif action == "stop_model":
-                    await self.ws_stop_model(websocket)
+                    await self.get_info(websocket)
+                elif action == "stop":
+                    await self.stop(websocket)
                 elif action == "image_frame":
                     await self.handle_image_frame(websocket, data)
                 else:
@@ -153,45 +187,5 @@ class ModelManager:
             await websocket.send(json.dumps({"error": "Invalid JSON format"})) 
         except Exception as e:
             await websocket.send(json.dumps({"error": f"Unexpected error: {str(e)}"}))
-
-    #WebSocket to launch the model
-    async def ws_launch_model(self, websocket, data):
-        try:
-            response = self.launch_model(data)
-            await websocket.send(json.dumps(response))  
-        except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
-
-    #WebSocket to get the current model state
-    async def ws_get_state(self, websocket):
-        try:
-            response = self.get_state()
-            await websocket.send(json.dumps(response))
-        except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
-
-    #WebSocket to know about the available models
-    async def ws_get_info(self, websocket):
-        try:
-            response = self.get_info()
-            await websocket.send(json.dumps(response))
-        except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
-
-    #WebSocket to stop the current model
-    async def ws_stop_model(self, websocket):
-        try:
-            response = self.stop_model()
-            await websocket.send(json.dumps(response))
-        except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
-
-    #WebSocket to manage all the frames when a model is running
-    async def handle_image_frame(self, websocket, data):
-        try:
-            response = self.run_model(data)
-            await websocket.send(json.dumps(response))  
-        except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
 
 #endregion
