@@ -15,7 +15,7 @@ class ModelManager:
 
 #region Model Manager Methods
 
-    def set_process_id(self) -> int:
+    def set_model_id(self) -> int:
 
         #First process id = 1000
         if len(self.running_models) == 0:
@@ -50,23 +50,24 @@ class ModelManager:
     #Handle actions with the client
     async def handle_client(self, websocket, path):
 
-        try:
+        try:            
+
             async for message in websocket:
+
                 data = json.loads(message)
-                action = data['action']
 
                 # Print the message received from the client
-                print(f"Message received from client {websocket.remote_address}: " "action: " f"{action}")
+                print(f"Message received from client {websocket.remote_address}: " "endpoint: " f"{path}")
 
-                if action == "launch":
+                if path == "/launch":
                     await self.launch(websocket, data)
-                elif action == "get_state":
-                    await self.get_state(websocket)
-                elif action == "get_info":
+                elif path == "/models":
                     await self.get_info(websocket)
-                elif action == "stop":
+                elif path == "/models/running":
+                    await self.get_running(websocket)
+                elif path == "/stop":
                     await self.stop(websocket, data)
-                elif action == "run":
+                elif path == "/run":
                     await self.run(websocket, data)
                 else:
                     await websocket.send(json.dumps({"error": "Invalid action"}))
@@ -96,7 +97,7 @@ class ModelManager:
                 model_instance = model_class()
                 model_instance.launch(data)
 
-                self.running_models[self.set_process_id()] = model_instance
+                self.running_models[self.set_model_id()] = model_instance
 
                 response = {"message": f"{model_name} model launched successfully"}
             
@@ -118,15 +119,15 @@ class ModelManager:
                     response = {"error": "No model is currently running"}
                 else:
                     img_str = data['image']
-                    process_id = int(data['id'])
+                    model_id = int(data['model_id'])
 
-                    if process_id in self.running_models:
+                    if model_id in self.running_models:
                         img_data = base64.b64decode(img_str)
                         np_arr = np.frombuffer(img_data, np.uint8)
                         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-                        response = self.running_models[process_id].run(img)
+                        response = self.running_models[model_id].run(img)
                     else:
-                        response = {"error": f"No model is currently running with the process_id: {process_id}"}
+                        response = {"error": f"No model is currently running with the model_id: {model_id}"}
 
             except Exception as e:
                 response = {"error": f"Error during model execution: {str(e)}"}
@@ -143,29 +144,29 @@ class ModelManager:
                 response = {"message": "No model is running"}
             else:
 
-                process_id = data['id']
+                model_id = data['model_id']
 
-                if isinstance(process_id, str) and process_id.lower() == "all":
+                if isinstance(model_id, str) and model_id.lower() == "all":
                     for id in self.running_models:
                         self.running_models[id].stop()
                     self.running_models.clear()
                     response = {"message": f"All the models have been stopped successfully"}
 
-                elif isinstance(process_id, int):
-                    process_id = int(process_id)
-                    if process_id in self.running_models:
-                        model_name = self.running_models[process_id].model_name
-                        self.running_models[process_id].stop()
-                        del self.running_models[process_id]
+                elif isinstance(model_id, int):
+                    model_id = int(model_id)
+                    if model_id in self.running_models:
+                        model_name = self.running_models[model_id].model_name
+                        self.running_models[model_id].stop()
+                        del self.running_models[model_id]
                         response = {"message": f"The model {model_name} has been stopped successfully"}
                     else:
-                        response = {"message": f"There is no model with the process_id: {process_id}"}
+                        response = {"message": f"There is no model with the model_id: {model_id}"}
 
-                elif isinstance(process_id, list):
+                elif isinstance(model_id, list):
 
                     stopped_models = {}
 
-                    for id in process_id:
+                    for id in model_id:
                         p_id = int(id)
 
                         if p_id in self.running_models:
@@ -174,32 +175,35 @@ class ModelManager:
                             del self.running_models[p_id]
                             stopped_models[p_id] = f"The model {model_name} has been stopped successfully"
                         else:
-                            stopped_models[p_id] = f"There is no model with the process_id: {p_id}"
+                            stopped_models[p_id] = f"There is no model with the model_id: {p_id}"
                         
                     response = {"message": stopped_models}
+
+                else:
+                    response = {"message": f"Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list."}
 
             await websocket.send(json.dumps(response))
         except Exception as e:
             await websocket.send(json.dumps({"error": str(e)}))
 
-    #endpoint to get the current model state
-    async def get_state(self, websocket):
+    #endpoint to get all the current running models
+    async def get_running(self, websocket):
 
         try:
 
             if  len(self.running_models) == 0:
-                response = {"state": "No model is running"}
+                response = {"model_id": "No model is running"}
             else:
 
-                state_models = {}
+                models = {}
 
                 for id in sorted(self.running_models.keys()):
-                    state_models[id] = {
+                    models[id] = {
                         "model_name": self.running_models[id].model_name,
                         "variant": self.running_models[id].variant
                     }
 
-                response = {"state": state_models}
+                response = {"model_id": models}
 
             await websocket.send(json.dumps(response))
         except Exception as e:
@@ -234,4 +238,3 @@ class ModelManager:
 #endregion  
 
 #endregion
-
