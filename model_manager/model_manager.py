@@ -5,17 +5,21 @@ import importlib
 import websockets
 import numpy as np
 from pathlib import Path
+from typing import Dict, Any
+from models.base_model import BaseModel
+
 
 class ModelManager:
 
 #region Constructor
-    def __init__(self):
-        self.running_models = {}
+    def __init__(self) -> None:
+        self.running_models: Dict[int, BaseModel] = {}
 #endregion
 
 #region Model Manager Methods
 
     def set_model_id(self) -> int:
+        """Generate a unique model ID."""
 
         #First process id = 1000
         if len(self.running_models) == 0:
@@ -30,7 +34,9 @@ class ModelManager:
 #region WebSocket Methods
 
     #WebSocket Inizialization
-    async def start_server(self):
+    async def start_server(self) -> None:
+        """Start the WebSocket server"""
+
         print("WebSocket server is starting...")
         try:
 
@@ -48,7 +54,8 @@ class ModelManager:
             print("Server shutdown.")
 
     #Handle actions with the client
-    async def handle_client(self, websocket, path):
+    async def handle_client(self, websocket: websockets.WebSocketServerProtocol, path: str) -> None:
+        """Handle incoming client messages"""
 
         try:            
 
@@ -62,7 +69,7 @@ class ModelManager:
                 if path == "/launch":
                     await self.launch(websocket, data)
                 elif path == "/models":
-                    await self.get_info(websocket)
+                    await self.get_models(websocket)
                 elif path == "/models/running":
                     await self.get_running(websocket)
                 elif path == "/stop":
@@ -80,7 +87,9 @@ class ModelManager:
             await websocket.send(json.dumps({"error": f"Unexpected error: {str(e)}"}))
 
     #endpoint to launch the model
-    async def launch(self, websocket, data):
+    async def launch(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
+        """Launch a model"""
+
         try:
 
             try:
@@ -110,7 +119,9 @@ class ModelManager:
             await websocket.send(json.dumps({"error": str(e)}))
 
     #endpoint to manage all the frames when a model is running
-    async def run(self, websocket, data):
+    async def run(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
+        """Run a specific model with an image"""
+    
         try:
 
             try:
@@ -137,7 +148,9 @@ class ModelManager:
             await websocket.send(json.dumps({"error": str(e)}))
 
     #endpoint to stop the current model
-    async def stop(self, websocket, data):
+    async def stop(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
+        """Stop a running model."""
+        
         try:
 
             if len(self.running_models) == 0: 
@@ -187,7 +200,8 @@ class ModelManager:
             await websocket.send(json.dumps({"error": str(e)}))
 
     #endpoint to get all the current running models
-    async def get_running(self, websocket):
+    async def get_running(self, websocket: websockets.WebSocketServerProtocol) -> None:
+        """Return all running models."""
 
         try:
 
@@ -210,7 +224,9 @@ class ModelManager:
             await websocket.send(json.dumps({"error": str(e)}))
 
     #endpoint to know about the available models in the manager
-    async def get_info(self, websocket):
+    async def get_models(self, websocket: websockets.WebSocketServerProtocol) -> None:
+        """Return information about available models."""
+
         try:
 
             models_info = {}
