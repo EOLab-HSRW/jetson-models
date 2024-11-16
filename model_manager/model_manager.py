@@ -66,16 +66,18 @@ class ModelManager:
                 # Print the message received from the client
                 print(f"Message received from client {websocket.remote_address}: " "endpoint: " f"{path}")
 
-                if path == "/launch":
-                    await self.launch(websocket, data)
-                elif path == "/models":
+                if path == "/models":
                     await self.get_models(websocket)
+                elif path == "/models/launch":
+                    await self.launch(websocket, data)
+                elif path == "/models/run":
+                    await self.run(websocket, data)
+                elif path == "/models/stop":
+                    await self.stop(websocket, data)
                 elif path == "/models/running":
                     await self.get_running(websocket)
-                elif path == "/stop":
-                    await self.stop(websocket, data)
-                elif path == "/run":
-                    await self.run(websocket, data)
+                elif path == "/models/running/info":
+                    await self.get_running_info(websocket)
                 else:
                     await websocket.send(json.dumps({"error": "Invalid action"}))
 
@@ -96,27 +98,31 @@ class ModelManager:
                 model_name = str(data['model']).lower()
 
                 if model_name == "base_model": 
-                    response = {"message": f"Model {model_name} is not supported"}
+                    print("base_model is not supported")
+                    response = 0
+                else:
+                    
+                    #Getting the model class
+                    model_module = importlib.import_module(f"models.{model_name}")
+                    model_class = getattr(model_module, model_name)
 
-                #Getting the model class
-                model_module = importlib.import_module(f"models.{model_name}")
-                model_class = getattr(model_module, model_name)
+                    # Instantiate a temporary object to call its info method
+                    model_instance = model_class()
+                    model_instance.launch(data)
 
-                # Instantiate a temporary object to call its info method
-                model_instance = model_class()
-                model_instance.launch(data)
-
-                self.running_models[self.set_model_id()] = model_instance
-
-                response = {"message": f"{model_name} model launched successfully"}
+                    model_id = self.set_model_id()
+                    self.running_models[model_id] = model_instance
+                    response = model_id
+                    print(f"Model: {model_name} launched successfully with the model_id: {model_id}")
             
-            except (ModuleNotFoundError, AttributeError) as e:
-                response = {"error": f"Model {model_name} is not supported or failed to load. Error: {str(e)}"}            
-
+            except (ModuleNotFoundError, AttributeError):
+                print(f"error: Model {model_name} is not supported or failed to load. Error: {e}")
+                response = 0         
             await websocket.send(json.dumps(response))  
 
         except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
+            print(f"error: {e}")
+            await websocket.send(str(0))
 
     #endpoint to manage all the frames when a model is running
     async def run(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
@@ -154,74 +160,82 @@ class ModelManager:
         try:
 
             if len(self.running_models) == 0: 
-                response = {"message": "No model is running"}
+                print("No model is running")
+                response = 1
             else:
 
                 model_id = data['model_id']
 
                 if isinstance(model_id, str) and model_id.lower() == "all":
+                    stopped_models = []
                     for id in self.running_models:
+                        stopped_models.append(id)
                         self.running_models[id].stop()
                     self.running_models.clear()
-                    response = {"message": f"All the models have been stopped successfully"}
+                    print("All the models have been stopped successfully")
+                    response = stopped_models
 
                 elif isinstance(model_id, int):
                     model_id = int(model_id)
                     if model_id in self.running_models:
                         model_name = self.running_models[model_id].model_name
+                        response = model_id
                         self.running_models[model_id].stop()
                         del self.running_models[model_id]
-                        response = {"message": f"The model {model_name} has been stopped successfully"}
+                        print(f"Model: {model_name} with the model_id: {model_id} has been stopped successfully")
                     else:
-                        response = {"message": f"There is no model with the model_id: {model_id}"}
+                        print(f"There is no model with the model_id: {model_id}")
+                        response = 0
 
                 elif isinstance(model_id, list):
 
-                    stopped_models = {}
+                    stopped_models = []
 
                     for id in model_id:
-                        p_id = int(id)
+                        model_id = int(id)
 
-                        if p_id in self.running_models:
-                            model_name = self.running_models[p_id].model_name
-                            self.running_models[p_id].stop()
-                            del self.running_models[p_id]
-                            stopped_models[p_id] = f"The model {model_name} has been stopped successfully"
+                        if model_id in self.running_models:
+                            model_name = self.running_models[model_id].model_name
+                            stopped_models.append(model_id)
+                            self.running_models[model_id].stop()
+                            del self.running_models[model_id]
+                            response = stopped_models
+
+                            print(f"Model: {model_name} with the model_id {model_id} has been stopped successfully")
                         else:
-                            stopped_models[p_id] = f"There is no model with the model_id: {p_id}"
-                        
-                    response = {"message": stopped_models}
+                            print(f"There is no model with the model_id: {model_id}")
 
                 else:
-                    response = {"message": f"Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list."}
+                    print(f"Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list.")
+                    response = 0
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
+            print(f"error: {e}")
+            await websocket.send(json.dumps(0))
 
-    #endpoint to get all the current running models
+    #endpoint to get a model_id list of the current running models
     async def get_running(self, websocket: websockets.WebSocketServerProtocol) -> None:
-        """Return all running models."""
+        """Return a model_id list of the current running models"""
 
         try:
 
             if  len(self.running_models) == 0:
-                response = {"model_id": "No model is running"}
+                print("No model is running")
+                response = 1
             else:
 
-                models = {}
+                models = []
 
                 for id in sorted(self.running_models.keys()):
-                    models[id] = {
-                        "model_name": self.running_models[id].model_name,
-                        "variant": self.running_models[id].variant
-                    }
+                    models.append(id)
 
-                response = {"model_id": models}
+                response = models
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
+            print(f"error: {e}")
+            await websocket.send(json.dumps(0))
 
     #endpoint to know about the available models in the manager
     async def get_models(self, websocket: websockets.WebSocketServerProtocol) -> None:
@@ -246,6 +260,30 @@ class ModelManager:
                 models_info[model_name] = model_info[model_name]
 
             response = {"models": models_info}
+
+            await websocket.send(json.dumps(response))
+        except Exception as e:
+            await websocket.send(json.dumps({"error": str(e)}))
+
+    #endpoint to get all the current running models
+    async def get_running_info(self, websocket: websockets.WebSocketServerProtocol) -> None:
+        """Return all running models information"""
+
+        try:
+
+            if  len(self.running_models) == 0:
+                response = {"model_id": "No model is running"}
+            else:
+
+                models = {}
+
+                for id in sorted(self.running_models.keys()):
+                    models[id] = {
+                        "model_name": self.running_models[id].model_name,
+                        "variant": self.running_models[id].variant
+                    }
+
+                response = {"model_id": models}
 
             await websocket.send(json.dumps(response))
         except Exception as e:
