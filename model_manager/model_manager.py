@@ -1,5 +1,5 @@
-import json
 import cv2
+import json
 import base64
 import importlib
 import websockets
@@ -78,6 +78,9 @@ class ModelManager:
                     await self.get_running(websocket)
                 elif path == "/models/running/info":
                     await self.get_running_info(websocket)
+                elif path.startswith("/dataset/"):
+                    model_name = path[len("/dataset/"):]
+                    await self.prepare_dataset(websocket, model_name, data)
                 else:
                     await websocket.send(json.dumps({"error": "Invalid action"}))
 
@@ -263,7 +266,8 @@ class ModelManager:
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
+            print(f"error: {e}")
+            await websocket.send(json.dumps(0))
 
     #endpoint to get all the current running models
     async def get_running_info(self, websocket: websockets.WebSocketServerProtocol) -> None:
@@ -287,7 +291,116 @@ class ModelManager:
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
+            print(f"error: {e}")
+            await websocket.send(json.dumps(0))
+
+    #endpoint to prepare the dataset format
+    async def prepare_dataset(self, websocket: websockets.WebSocketServerProtocol, model_name: str, data: Dict[str, Any]) -> None:
+        """Prepare the dataset for training using COCO format"""
+
+        try:
+            response = 0
+            model_name = model_name.lower()
+            models_dir = Path(__file__).resolve().parent.parent / "models"
+
+            for file in models_dir.glob("*py"):
+                if model_name == str(file.stem).lower():
+
+                    dataset = list(data['dataset'])
+                    class_label = data['class_label']
+                    dataset_name = data['dataset_name']
+
+                    if dataset and class_label:
+                        tmp_dir = Path(__file__).resolve().parent.parent / "datasets" / dataset_name
+                        tmp_dir.mkdir(parents=True, exist_ok=True)  # Create a temporal folder in the project folder if not exists
+
+                        # Initialize COCO dataset structure
+                        coco_data = {
+                            "images": [],
+                            "annotations": [],
+                            "categories": []
+                        }
+
+                        # Add category for class label, just a single class for dataset so far
+                        coco_data["categories"].append({
+                            "id": 1,
+                            "name": class_label
+                        })
+
+                        annotation_id = 1
+
+                        for img in dataset:
+                            img_id = img['id']
+                            base64_image = img['image']
+                            bounding_box = img['BB']
+
+                            if not img_id or not base64_image:
+                                continue
+
+                            # Decode image and get image size (width, height)
+                            img_data = base64.b64decode(base64_image)
+                            np_arr = np.frombuffer(img_data, np.uint8)
+                            img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                            img_height, img_width = img.shape[:2]
+
+                            # Save the image in the dataset folder
+                            img_path = tmp_dir / f"{img_id}.jpg"
+                            with open(img_path, "wb") as img_file:
+                                img_file.write(img_data)
+
+                            # Add image information to COCO dataset
+                            coco_data["images"].append({
+                                "id": img_id,
+                                "file_name": f"{img_id}.jpg",
+                                "width": img_width,
+                                "height": img_height
+                            })
+
+                            # Add bounding box annotation (only if DetectNet)
+                            if bounding_box and model_name == "detectnet":
+                                x_min, y_min, x_max, y_max = (
+                                    bounding_box["x_min"],
+                                    bounding_box["y_min"],
+                                    bounding_box["x_max"],
+                                    bounding_box["y_max"],
+                                )
+
+                                if None in (x_min, y_min, x_max, y_max):
+                                    print(f"Skipping invalid bounding box for image ID {img_id}")
+                                    continue
+
+                                bbox_width = x_max - x_min
+                                bbox_height = y_max - y_min
+                                area = bbox_width * bbox_height
+
+                                coco_data["annotations"].append({
+                                    "id": annotation_id,
+                                    "image_id": img_id,
+                                    "category_id": 1, #just a single category so far
+                                    "bbox": [
+                                        x_min / img_width,  
+                                        y_min / img_height, 
+                                        bbox_width / img_width,  
+                                        bbox_height / img_height
+                                    ],
+                                    "area": area / (img_width * img_height),
+                                    "iscrowd": 0 #no more than one object detection at the same time
+                                })
+
+                                annotation_id += 1
+
+                        # Save COCO dataset to a JSON file
+                        coco_path = tmp_dir / f"{dataset_name}.json"
+                        with open(coco_path, "w") as coco_file:
+                            json.dump(coco_data, coco_file, indent=4)
+
+                        response = dataset_name
+
+            await websocket.send(json.dumps(response))
+
+        except Exception as e:
+            print(f"error: {e}")
+            await websocket.send(json.dumps(0)) 
 
 #endregion  
 
