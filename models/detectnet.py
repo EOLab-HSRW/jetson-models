@@ -49,6 +49,7 @@ class detectnet(BaseModel):
         detection_info = [{
                 "detections":{
                     "ClassID": det.ClassID,
+                    "ClassLabel": self.__detectnet.GetClassDesc(det.ClassID),
                     "Confidence": det.Confidence,
                     "BoundingBox": {
                         "Left": round(det.Left / img_width, 4),
