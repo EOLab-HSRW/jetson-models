@@ -306,6 +306,7 @@ class ModelManager:
             for file in models_dir.glob("*py"):
                 if model_name == str(file.stem).lower():
 
+                    category_id = 1   #just a single category so far
                     dataset = list(data['dataset'])
                     class_label = data['class_label']
                     dataset_name = data['dataset_name']
@@ -323,11 +324,9 @@ class ModelManager:
 
                         # Add category for class label, just a single class for dataset so far
                         coco_data["categories"].append({
-                            "id": 1,
+                            "id": category_id,
                             "name": class_label
                         })
-
-                        annotation_id = 1
 
                         for img in dataset:
                             img_id = img['id']
@@ -374,20 +373,15 @@ class ModelManager:
                                 area = bbox_width * bbox_height
 
                                 coco_data["annotations"].append({
-                                    "id": annotation_id,
                                     "image_id": img_id,
-                                    "category_id": 1, #just a single category so far
+                                    "category_id": category_id, 
                                     "bbox": [
                                         x_min / img_width,  
                                         y_min / img_height, 
                                         bbox_width / img_width,  
                                         bbox_height / img_height
-                                    ],
-                                    "area": area / (img_width * img_height),
-                                    "iscrowd": 0 #no more than one object detection at the same time
+                                    ]
                                 })
-
-                                annotation_id += 1
 
                         # Save COCO dataset to a JSON file
                         coco_path = tmp_dir / f"{dataset_name}.json"
