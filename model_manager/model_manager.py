@@ -41,11 +41,12 @@ class ModelManager:
         try:
 
             #Set the host ip
-            host = "192.168.178.75"
+            host = "192.168.1.25"
+            port = 5000
 
             # Start the WebSocket server
-            self.server = await websockets.serve(self.handle_client, host , 5000)
-            print(f"Server running on ws://{host}:5000")    
+            self.server = await websockets.serve(self.handle_client, host , port)
+            print(f"Server running on ws://{host}:{port}")    
             await self.server.wait_closed()
             
         except Exception as e:
@@ -102,7 +103,7 @@ class ModelManager:
 
                 if model_name == "base_model": 
                     print("base_model is not supported")
-                    response = 0
+                    response = -1
                 else:
                     
                     #Getting the model class
@@ -120,12 +121,13 @@ class ModelManager:
             
             except (ModuleNotFoundError, AttributeError):
                 print(f"error: Model {model_name} is not supported or failed to load. Error: {e}")
-                response = 0         
+                response = -1         
             await websocket.send(json.dumps(response))  
 
         except Exception as e:
             print(f"error: {e}")
-            await websocket.send(str(0))
+            response = -1
+            await websocket.send(json.dumps(response))
 
     #endpoint to manage all the frames when a model is running
     async def run(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
@@ -136,7 +138,8 @@ class ModelManager:
             try:
 
                 if len(self.running_models) == 0:
-                    response = {"error": "No model is currently running"}
+                    print("error no model is currently running")
+                    response = 0
                 else:
                     img_str = data['image']
                     model_id = int(data['model_id'])
@@ -147,14 +150,18 @@ class ModelManager:
                         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
                         response = self.running_models[model_id].run(img)
                     else:
-                        response = {"error": f"No model is currently running with the model_id: {model_id}"}
+                        print(f"error: No model is currently running with the model_id: {model_id}")
+                        response = 0
 
             except Exception as e:
-                response = {"error": f"Error during model execution: {str(e)}"}
+                print(f"error: Error during model execution: {str(e)}")
+                response = -1
 
             await websocket.send(json.dumps(response))  
         except Exception as e:
-            await websocket.send(json.dumps({"error": str(e)}))
+            response = -1
+            print(f"error {str(e)}")
+            await websocket.send(json.dumps(response))
 
     #endpoint to stop the current model
     async def stop(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
@@ -164,7 +171,7 @@ class ModelManager:
 
             if len(self.running_models) == 0: 
                 print("No model is running")
-                response = 1
+                response = 0
             else:
 
                 model_id = data['model_id']
@@ -203,9 +210,10 @@ class ModelManager:
                             self.running_models[model_id].stop()
                             del self.running_models[model_id]
                             response = stopped_models
-
                             print(f"Model: {model_name} with the model_id {model_id} has been stopped successfully")
+
                         else:
+                            response = 0
                             print(f"There is no model with the model_id: {model_id}")
 
                 else:
@@ -215,7 +223,8 @@ class ModelManager:
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"error: {e}")
-            await websocket.send(json.dumps(0))
+            response = -1
+            await websocket.send(json.dumps(response))
 
     #endpoint to get a model_id list of the current running models
     async def get_running(self, websocket: websockets.WebSocketServerProtocol) -> None:
@@ -225,7 +234,7 @@ class ModelManager:
 
             if  len(self.running_models) == 0:
                 print("No model is running")
-                response = 1
+                response = 0
             else:
 
                 models = []
@@ -238,7 +247,8 @@ class ModelManager:
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"error: {e}")
-            await websocket.send(json.dumps(0))
+            response = -1
+            await websocket.send(json.dumps(response))
 
     #endpoint to know about the available models in the manager
     async def get_models(self, websocket: websockets.WebSocketServerProtocol) -> None:
@@ -267,7 +277,8 @@ class ModelManager:
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"error: {e}")
-            await websocket.send(json.dumps(0))
+            response = -1
+            await websocket.send(json.dumps(response))
 
     #endpoint to get all the current running models
     async def get_running_info(self, websocket: websockets.WebSocketServerProtocol) -> None:
@@ -276,7 +287,8 @@ class ModelManager:
         try:
 
             if  len(self.running_models) == 0:
-                response = {"model_id": "No model is running"}
+                print("model_id no model is running")
+                response = 0
             else:
 
                 models = {}
@@ -292,7 +304,8 @@ class ModelManager:
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"error: {e}")
-            await websocket.send(json.dumps(0))
+            response = -1
+            await websocket.send(json.dumps(response))
 
     #endpoint to prepare the dataset format
     async def prepare_dataset(self, websocket: websockets.WebSocketServerProtocol, model_name: str, data: Dict[str, Any]) -> None:
@@ -394,7 +407,8 @@ class ModelManager:
 
         except Exception as e:
             print(f"error: {e}")
-            await websocket.send(json.dumps(0)) 
+            response = -1
+            await websocket.send(json.dumps(response)) 
 
 #endregion  
 
