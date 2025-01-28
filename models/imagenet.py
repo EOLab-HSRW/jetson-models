@@ -53,7 +53,7 @@ class imagenet(BaseModel):
                 "predictions": {
                     "ClassID": classID,
                     "ClassLabel": classLabel,
-                    "Confidence": confidence * 100                 
+                    "Confidence": confidence                
                     }
                 }]
 
