@@ -33,11 +33,12 @@ class imagenet(BaseModel):
             self.__model_name = data.get('model')
             self.__variant = data.get('variant', "googlenet")
             self.__topK = data.get('topK', 1)
-
             self.__imagenet = jetson_inference.imageNet(self.__variant)
+            return True
 
         except Exception as e:
             print(f"Error inizializing the model: {str(e)}")
+            return False
 
     def run(self, img):
 

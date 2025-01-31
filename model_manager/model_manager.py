@@ -41,7 +41,7 @@ class ModelManager:
         try:
 
             #Set the host ip
-            host = "192.168.1.25"
+            host = "0.0.0.0"
             port = 5000
 
             # Start the WebSocket server
@@ -86,7 +86,7 @@ class ModelManager:
                     await websocket.send(json.dumps({"error": "Invalid action"}))
 
         except websockets.ConnectionClosed as e:
-            print(f"Client {websocket.remote_address} disconnected: {e}")
+            print(f"Client {websocket.remote_address} disconnected: {str(e)}")
         except json.JSONDecodeError:
             await websocket.send(json.dumps({"error": "Invalid JSON format"})) 
         except Exception as e:
@@ -112,12 +112,15 @@ class ModelManager:
 
                     # Instantiate a temporary object to call its info method
                     model_instance = model_class()
-                    model_instance.launch(data)
+                    success = model_instance.launch(data)
 
-                    model_id = self.set_model_id()
-                    self.running_models[model_id] = model_instance
-                    response = model_id
-                    print(f"Model: {model_name} launched successfully with the model_id: {model_id}")
+                    if success:
+                        model_id = self.set_model_id()
+                        self.running_models[model_id] = model_instance
+                        response = model_id
+                        print(f"Model: {model_name} launched successfully with the model_id: {model_id}")
+                    else:
+                        response = -1
             
             except (ModuleNotFoundError, AttributeError):
                 print(f"error: Model {model_name} is not supported or failed to load. Error: {e}")
@@ -125,7 +128,7 @@ class ModelManager:
             await websocket.send(json.dumps(response))  
 
         except Exception as e:
-            print(f"error: {e}")
+            print(f"error: {str(e)}")
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -246,7 +249,7 @@ class ModelManager:
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"error: {e}")
+            print(f"error: {str(e)}")
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -276,7 +279,7 @@ class ModelManager:
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"error: {e}")
+            print(f"error: {str(e)}")
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -303,7 +306,7 @@ class ModelManager:
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"error: {e}")
+            print(f"error: {str(e)}")
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -406,7 +409,7 @@ class ModelManager:
             await websocket.send(json.dumps(response))
 
         except Exception as e:
-            print(f"error: {e}")
+            print(f"error: {str(e)}")
             response = -1
             await websocket.send(json.dumps(response)) 
 

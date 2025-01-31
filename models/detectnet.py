@@ -32,11 +32,12 @@ class detectnet(BaseModel):
             self.__variant = data.get('variant', "ssd-mobilenet-v2")
             self.__threshold = data.get('threshold', 0.5)
             self.__overlay = data.get('overlay', 'box,labels,conf')
-
             self.__detectnet = jetson_inference.detectNet(network=self.__variant, threshold=self.__threshold)
+            return True
 
         except Exception as e:
             print(f"Error inizializing the model: {str(e)}")
+            return False
 
     def run(self, img):
 
