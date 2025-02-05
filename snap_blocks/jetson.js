@@ -7,10 +7,3 @@ SnapExtensions.primitives.set(
     console.log("Hello from extension")
   }
 );
-
-SnapExtensions.primitives.set(
-  'jetson_test()',
-  function () {
-    console.log("Testing CDN v4")
-  }
-);
