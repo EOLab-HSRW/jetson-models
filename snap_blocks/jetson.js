@@ -11,6 +11,6 @@ SnapExtensions.primitives.set(
 SnapExtensions.primitives.set(
   'jetson_test()',
   function () {
-    console.log("Testing CDN v2")
+    console.log("Testing CDN v3")
   }
 );
