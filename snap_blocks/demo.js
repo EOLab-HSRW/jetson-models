@@ -1,3 +1,9 @@
 "use strict";
 
-window.jetson_extension_msg = "hello world";
+
+SnapExtensions.primitives.set(
+  'jetson_connect()',
+  function () {
+    console.log("Hello from extension")
+  }
+);
