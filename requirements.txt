@@ -1,3 +1,10 @@
+#Model manager dependencies
 websockets
 numpy
 opencv-python
+
+#Pytorch-ssd dependencies
+boto3
+pandas
+urllib3
+tensorboard
