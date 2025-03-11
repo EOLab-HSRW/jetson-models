@@ -8,6 +8,22 @@ from pathlib import Path
 from typing import Dict, Any
 from models.base_model import BaseModel
 
+import os
+import torch
+from torch.utils.data import DataLoader
+from pytorch_ssd.vision.datasets.voc_dataset import VOCDataset
+from pytorch_ssd.vision.datasets.open_images import OpenImagesDataset
+from pytorch_ssd.vision.ssd.vgg_ssd import create_vgg_ssd
+from pytorch_ssd.vision.ssd.mobilenetv1_ssd import create_mobilenetv1_ssd
+from pytorch_ssd.vision.ssd.mobilenetv1_ssd_lite import create_mobilenetv1_ssd_lite
+from pytorch_ssd.vision.ssd.config import mobilenetv1_ssd_config
+from pytorch_ssd.vision.ssd.config import vgg_ssd_config
+from pytorch_ssd.vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
+from pytorch_ssd.vision.ssd.ssd import MatchPrior
+from pytorch_ssd.vision.nn.multibox_loss import MultiboxLoss
+
+train_transform = TrainAugmentation(300, [123,117,104], [1,1,1])
+test_transform = TestTransform(300, [123,117,104], [1,1,1])
 
 class ModelManager:
 
@@ -94,7 +110,20 @@ class ModelManager:
 
     #endpoint to launch the model
     async def launch(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
-        """Launch a model"""
+        """
+        Launch a model
+        
+        Required JSON keys:
+        - "model_name": Name of the model to launch (e.g., "detectnet")
+        
+        Optional keys (with defaults):
+        - "variant_name": "ssd-mobilenet-v2"
+        - "threshold": 0.5
+        - "overlay": "box,labels,conf"
+
+        If any required key is missing, returns -1. 
+        On success, returns the launched model.
+        """
 
         try:
 
@@ -134,7 +163,16 @@ class ModelManager:
 
     #endpoint to manage all the frames when a model is running
     async def run(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
-        """Run a specific model with an image"""
+        """
+        Run a specific model with an image
+        
+        Required JSON keys:
+        - "image": base_64 string of the recieved image.
+        - "model_id": Model ID of an launched model.
+
+        If any required key is missing, returns -1 and for spelling error return 0. 
+        On success, returns the result of the indicated model.
+        """
     
         try:
 
@@ -144,11 +182,11 @@ class ModelManager:
                     print("error no model is currently running")
                     response = 0
                 else:
-                    img_str = data['image']
+                    base64_img = data['image']
                     model_id = int(data['model_id'])
 
-                    if model_id in self.running_models:
-                        img_data = base64.b64decode(img_str)
+                    if model_id in self.running_models and base64_img not in (None, '', 'null'):
+                        img_data = base64.b64decode(base64_img)
                         np_arr = np.frombuffer(img_data, np.uint8)
                         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
                         response = self.running_models[model_id].run(img)
@@ -168,7 +206,16 @@ class ModelManager:
 
     #endpoint to stop the current model
     async def stop(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
-        """Stop a running model."""
+        """
+        Stop a running model.
+        
+        Required JSON keys:
+        - "model_id": The model ID to stop, it can be an ID, a list of IDs or the string "all" or "ALL" to stops the models.  (e.g., 1000, [1000,1002,1025], "ALL")
+
+        If any required key is missing, returns -1 and for spelling error, for no current running model, for an invalid model_id type return 0. 
+        On success, returns ID or IDs of the stopped models.
+        
+        """
         
         try:
 
@@ -231,7 +278,11 @@ class ModelManager:
 
     #endpoint to get a model_id list of the current running models
     async def get_running(self, websocket: websockets.WebSocketServerProtocol) -> None:
-        """Return a model_id list of the current running models"""
+        """
+        Returns a model_id list of all the current running models.   
+
+        If there are no running models returns 0.     
+        """
 
         try:
 
@@ -255,7 +306,9 @@ class ModelManager:
 
     #endpoint to know about the available models in the manager
     async def get_models(self, websocket: websockets.WebSocketServerProtocol) -> None:
-        """Return information about available models."""
+        """
+        Returns a JSON with information about all available models inside the "/models" list folder.
+        """
 
         try:
 
@@ -285,7 +338,9 @@ class ModelManager:
 
     #endpoint to get all the current running models
     async def get_running_info(self, websocket: websockets.WebSocketServerProtocol) -> None:
-        """Return all running models information"""
+        """
+        Returns a JSON with all the running models information
+        """
 
         try:
 
@@ -312,7 +367,40 @@ class ModelManager:
 
     #endpoint to prepare the dataset format
     async def prepare_dataset(self, websocket: websockets.WebSocketServerProtocol, model_name: str, data: Dict[str, Any]) -> None:
-        """Prepare the dataset for training using COCO format"""
+        """
+        Prepare the dataset for training using COCO format.
+        
+        Required JSON keys for all the images:
+        - "id": The number ID of an image.
+        - "image": The string base64 encoded image.
+        - "class_label": The string class label of image (e.g., "person").
+        - "dataset_name": The string name of the dataset.
+
+        Optional keys (with defaults):
+        - "BB": The scaled Bonding Boxes location. Its just required to retrain the detectnet model (e.g., {"x_min": 0.1, "y_min": 0.1, "x_max": 0.5, "y_max": 0.5})
+
+        Example:
+
+        {
+            "dataset": [
+                {
+                    "id": 1,
+                    "image": "<base64_encoded_image_1>",
+                    "BB": {0.1, 0.1, 0.5, 0.5}
+                },
+                {
+                    "id": 2,
+                    "image": "<base64_encoded_image_2>",
+                    "BB": {0.2, 0.2, 0.6, 0.6}
+                }
+            ],
+            "class_label": "person",
+            "dataset_name": "New_dataset"
+        }
+
+        If any required key is missing returns -1 or the current image will be ignored continue with the next one. 
+        On success, returns the generated dataset name.
+        """
 
         try:
             response = 0
@@ -406,13 +494,171 @@ class ModelManager:
 
                         response = dataset_name
 
+                    else:
+                        response = -1
+                        print(f"error: The dataset or class_label is missing")
+
             await websocket.send(json.dumps(response))
 
         except Exception as e:
             print(f"error: {str(e)}")
             response = -1
             await websocket.send(json.dumps(response)) 
+    
+    #endpoint to retrain a model
+    async def retrain_model(self, websocket, data: dict) -> None:
+        """
+        Retrain a model using a prepared dataset.  
+        
+        Required JSON keys:
+        - "model_name": Name of the model to retrain (e.g., "detectnet")
+        - "dataset_name": Name of the dataset folder (e.g., "New_dataset")
+        - "variant_name": New variant to use (e.g., "ssd-mobilenet-v2")
+        
+        Optional keys (with defaults):
+        - "dataset_type": "open_images" (or "voc")
+        - "epochs": 30
+        - "batch_size": 4
+        - "learning_rate": 0.01
+        If any required key is missing, returns -1.
+        On success, returns the variant_name.
+        """
+
+        # Validate required parameters
+        for key in ["model_name", "dataset_name", "variant_name"]:
+            if key not in data:
+                await websocket.send(json.dumps(-1))
+                return
+
+        model_name = data["model_name"].lower()
+        dataset_name = data["dataset_name"]
+        variant_name = data["variant_name"]
+
+        # Optional training hyperparameters
+        dataset_type = data.get("dataset_type", "open_images")
+        epochs = int(data.get("epochs", 30))
+        batch_size = int(data.get("batch_size", 4))
+        learning_rate = float(data.get("learning_rate", 0.01))
+
+        # Path to the prepared dataset (created by prepare_dataset)
+        dataset_path = os.path.join("datasets", dataset_name)
+        if not os.path.exists(dataset_path):
+            print(f"Dataset path {dataset_path} does not exist.")
+            await websocket.send(json.dumps(-1))
+            return
+
+        # Create training and validation datasets.
+        # Here we reuse the same folder for training and validation for simplicity.
+        if dataset_type == "voc":
+            train_dataset = VOCDataset(dataset_path, transform=train_transform, target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
+                                            mobilenetv1_ssd_config.center_variance,
+                                            mobilenetv1_ssd_config.size_variance, 0.5))
+            val_dataset = VOCDataset(dataset_path, transform=test_transform, 
+                                    target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
+                                            mobilenetv1_ssd_config.center_variance,
+                                            mobilenetv1_ssd_config.size_variance, 0.5),
+                                    is_test=True)
+            config = vgg_ssd_config 
+        else:
+            train_dataset = OpenImagesDataset(dataset_path, transform=train_transform, 
+                                            target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
+                                            mobilenetv1_ssd_config.center_variance,
+                                            mobilenetv1_ssd_config.size_variance, 0.5),
+                                            dataset_type="train")
+            val_dataset = OpenImagesDataset(dataset_path, transform=test_transform, 
+                                            target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
+                                            mobilenetv1_ssd_config.center_variance,
+                                            mobilenetv1_ssd_config.size_variance, 0.5),
+                                            dataset_type="test")
+            config = mobilenetv1_ssd_config
+
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+
+        # Instantiate the network based on model_name and variant_name.
+        # For example, if retraining "detectnet" with variant "ssd-mobilenet-v2":
+        num_classes = 2  # Adjust as needed (number of classes + background)
+        if model_name == "detectnet":
+            if variant_name == "ssd-mobilenet-v2":
+                net = create_mobilenetv1_ssd_lite(num_classes)
+                config = mobilenetv1_ssd_config
+            elif variant_name == "ssd-mobilenet-v1":
+                net = create_mobilenetv1_ssd(num_classes)
+                config = mobilenetv1_ssd_config
+            elif variant_name == "vgg16-ssd":
+                net = create_vgg_ssd(num_classes)
+                config = vgg_ssd_config
+            else:
+                print(f"Variant {variant_name} not recognized for model {model_name}.")
+                await websocket.send(json.dumps(-1))
+                return
+            config.set_image_size(300)  # example; adjust if necessary
+        else:
+            print(f"Model {model_name} is not supported for retraining.")
+            await websocket.send(json.dumps(-1))
+            return
+
+        # Set up device, loss function, and optimizer
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        net.to(device)
+        criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
+                                center_variance=config.center_variance,
+                                size_variance=config.size_variance, device=device)
+        optimizer = torch.optim.SGD(net.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+
+        # Training loop (synchronous; consider running in a separate thread/task if needed)
+        for epoch in range(epochs):
+            train_loss = self._train_epoch(train_loader, net, criterion, optimizer, device, epoch)
+            val_loss = self._validate_epoch(val_loader, net, criterion, device)
+            print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+
+        save_directory = "/usr/local/bin/networks" #Default jetson network folder
+
+        model_path = os.path.join(save_directory, f"{variant_name}.pth")
+        net.save(model_path)
+        print(f"Saved model {model_path}")
+
+        # Return the variant_name as an indication of success.
+        await websocket.send(json.dumps(variant_name))
+
+    def _train_epoch(self, train_loader, net, criterion, optimizer, device, epoch):
+        net.train()
+        running_loss = 0.0
+        num_batches = 0
+        for i, data in enumerate(train_loader):
+            # Unpack data (assumes dataset returns (image, boxes, labels))
+            images, boxes, labels = data
+            images = images.to(device)
+            boxes = boxes.to(device)
+            labels = labels.to(device)
+            optimizer.zero_grad()
+            confidence, locations = net(images)
+            regression_loss, classification_loss = criterion(confidence, locations, labels, boxes)
+            loss = regression_loss + classification_loss
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+            num_batches += 1
+        avg_loss = running_loss / num_batches if num_batches > 0 else 0.0
+        return avg_loss
+
+    def _validate_epoch(self, val_loader, net, criterion, device):
+        net.eval()
+        running_loss = 0.0
+        num_batches = 0
+        with torch.no_grad():
+            for data in val_loader:
+                images, boxes, labels = data
+                images = images.to(device)
+                boxes = boxes.to(device)
+                labels = labels.to(device)
+                confidence, locations = net(images)
+                regression_loss, classification_loss = criterion(confidence, locations, labels, boxes)
+                loss = regression_loss + classification_loss
+                running_loss += loss.item()
+                num_batches += 1
+        avg_loss = running_loss / num_batches if num_batches > 0 else 0.0
+        return avg_loss
 
 #endregion  
-
 #endregion
