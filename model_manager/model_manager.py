@@ -1,5 +1,6 @@
 import cv2
 import json
+import gzip
 import base64
 import importlib
 import websockets
@@ -47,6 +48,71 @@ class ModelManager:
             current_id += 1
         return current_id
 
+    async def receive_chunked_data(self, websocket, initial_metadata: dict) -> dict:
+        """
+        Helper function to read the remaining chunked data.
+        Returns the final parsed JSON data, or None if there's an error.
+        """
+
+        received_data = b""
+        expected_chunks = initial_metadata["total_chunks"]
+        compressed = initial_metadata.get("compressed", False)
+        chunks_received = 0
+
+        print(f"Chunk metadata received: {initial_metadata}")
+
+        while True:
+            try:
+                message = await websocket.recv()
+            except websockets.ConnectionClosed:
+                print("Connection closed while receiving chunks.")
+                return None
+
+            if isinstance(message, str):
+                # We expect a “__END__” or an error here
+                msg_json = json.loads(message)
+                if msg_json.get("type") == "__END__":
+                    print("Received __END__ message, finishing reception.")
+                    break
+                else:
+                    print(f"Unexpected string message while reading chunks: {msg_json}")
+                    await websocket.send(json.dumps({"error": "Unexpected string message in chunk mode"}))
+                    return None
+            else:
+                # message is bytes → next chunk
+                received_data += message
+                chunks_received += 1
+                print(f"Received chunk {chunks_received}/{expected_chunks}")
+
+        if chunks_received != expected_chunks:
+            print(f"Chunk count mismatch: expected {expected_chunks}, got {chunks_received}")
+            await websocket.send(json.dumps(-1))
+            return None
+
+        # Decompress if needed
+        if compressed:
+            try:
+                decompressed_data = gzip.decompress(received_data).decode()
+                data = json.loads(decompressed_data)
+                print(f"Successfully decompressed and loaded dataset with {len(data['dataset'])} images.")
+            except Exception as e:
+                print(f"Gzip decompression or JSON parsing failed: {str(e)}")
+                await websocket.send(json.dumps(-1))
+                return None
+        else:
+            try:
+                data = json.loads(received_data.decode())
+                print("Successfully loaded uncompressed dataset.")
+            except Exception as e:
+                print(f"JSON parsing failed: {str(e)}")
+                await websocket.send(json.dumps(-1))
+                return None
+
+        # Acknowledge success
+        await websocket.send(json.dumps(1))
+        print(f"Dataset processing completed successfully from client {websocket.remote_address}.")
+        return data
+
 #region WebSocket Methods
 
     #WebSocket Inizialization
@@ -57,7 +123,7 @@ class ModelManager:
         try:
 
             #Set the host ip
-            host = "0.0.0.0"
+            host = "192.168.1.25"
             port = 5000
 
             # Start the WebSocket server
@@ -74,12 +140,35 @@ class ModelManager:
     async def handle_client(self, websocket: websockets.WebSocketServerProtocol, path: str) -> None:
         """Handle incoming client messages"""
 
-        try:            
+        try:
 
             async for message in websocket:
 
-                data = json.loads(message)
+                # Distinguish between chunk metadata or normal request
+                if isinstance(message, str):
+                    msg_json = json.loads(message)
+                    
+                    if 'total_chunks' in msg_json:
+                        # ---- CHUNK MODE ----
+                        data = await self.receive_chunked_data(
+                            websocket,
+                            initial_metadata=msg_json
+                        )
+                        # If there was an error, `receive_chunked_data` may return None:
+                        if data is None:
+                            return
+                    else:
+                        # ---- NORMAL MESSAGE MODE ----
+                        data = msg_json
 
+                elif isinstance(message, bytes):
+                    print("error: First message not recognized as valid JSON")
+                    await websocket.send(json.dumps(-1))
+                    return
+                else:
+                    # ---- NORMAL MESSAGE MODE ----
+                    data = json.loads(message)
+            
                 # Print the message received from the client
                 print(f"Message received from client {websocket.remote_address}: " "endpoint: " f"{path}")
 
@@ -99,14 +188,15 @@ class ModelManager:
                     model_name = path[len("/dataset/"):]
                     await self.prepare_dataset(websocket, model_name, data)
                 else:
-                    await websocket.send(json.dumps({"error": "Invalid action"}))
+                    print("error invalid action")
+                    await websocket.send(json.dumps(-1))
 
         except websockets.ConnectionClosed as e:
-            print(f"Client {websocket.remote_address} disconnected: {str(e)}")
-        except json.JSONDecodeError:
-            await websocket.send(json.dumps({"error": "Invalid JSON format"})) 
+            print(f"Client disconnected unexpectedly: {str(e)}")
+            await websocket.send(json.dumps(-1))
         except Exception as e:
-            await websocket.send(json.dumps({"error": f"Unexpected error: {str(e)}"}))
+            print(f"Unhandled error: {str(e)}")
+            await websocket.send(json.dumps(-1))
 
     #endpoint to launch the model
     async def launch(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
@@ -379,19 +469,23 @@ class ModelManager:
         Optional keys (with defaults):
         - "BB": The scaled Bonding Boxes location. Its just required to retrain the detectnet model (e.g., {"x_min": 0.1, "y_min": 0.1, "x_max": 0.5, "y_max": 0.5})
 
-        Example:
-
+        JSON Format:
         {
             "dataset": [
                 {
                     "id": 1,
                     "image": "<base64_encoded_image_1>",
-                    "BB": {0.1, 0.1, 0.5, 0.5}
+                    "BB": [
+                        {"x_min": 0.1, "y_min": 0.1, "x_max": 0.5, "y_max": 0.5},
+                        {"x_min": 0.2, "y_min": 0.3, "x_max": 0.6, "y_max": 0.7}
+                    ]
                 },
                 {
                     "id": 2,
                     "image": "<base64_encoded_image_2>",
-                    "BB": {0.2, 0.2, 0.6, 0.6}
+                    "BB": [
+                        {"x_min": 0.2, "y_min": 0.2, "x_max": 0.6, "y_max": 0.6}
+                    ]
                 }
             ],
             "class_label": "person",
@@ -414,6 +508,7 @@ class ModelManager:
                     dataset = list(data['dataset'])
                     class_label = data['class_label']
                     dataset_name = data['dataset_name']
+                    annotation_id = 1
 
                     if dataset and class_label:
                         tmp_dir = Path(__file__).resolve().parent.parent / "datasets" / dataset_name
@@ -435,7 +530,7 @@ class ModelManager:
                         for img in dataset:
                             img_id = img['id']
                             base64_image = img['image']
-                            bounding_box = img['BB']
+                            bounding_boxes = img['BB']
 
                             if not img_id or not base64_image:
                                 continue
@@ -460,32 +555,40 @@ class ModelManager:
                             })
 
                             # Add bounding box annotation (only if DetectNet)
-                            if bounding_box and model_name == "detectnet":
-                                x_min, y_min, x_max, y_max = (
-                                    bounding_box["x_min"],
-                                    bounding_box["y_min"],
-                                    bounding_box["x_max"],
-                                    bounding_box["y_max"],
-                                )
+                            if bounding_boxes and model_name == "detectnet":
 
-                                if None in (x_min, y_min, x_max, y_max):
-                                    print(f"Skipping invalid bounding box for image ID {img_id}")
-                                    continue
+                                # Process multiple bounding boxes
+                                for bbox in bounding_boxes:
+                                    try:
+                                        x_min = bbox["x_min"] * img_width
+                                        y_min = bbox["y_min"] * img_height
+                                        x_max = bbox["x_max"] * img_width
+                                        y_max = bbox["y_max"] * img_height
 
-                                bbox_width = x_max - x_min
-                                bbox_height = y_max - y_min
-                                area = bbox_width * bbox_height
+                                        bbox_width = x_max - x_min
+                                        bbox_height = y_max - y_min
+                                        area = bbox_width * bbox_height
 
-                                coco_data["annotations"].append({
-                                    "image_id": img_id,
-                                    "category_id": category_id, 
-                                    "bbox": [
-                                        x_min / img_width,  
-                                        y_min / img_height, 
-                                        bbox_width / img_width,  
-                                        bbox_height / img_height
-                                    ]
-                                })
+                                        if bbox_width <= 0 or bbox_height <= 0:
+                                            print(f"Skipping invalid bounding box for image ID {img_id}")
+                                            continue
+
+                                        # Add bounding box annotation
+                                        coco_data["annotations"].append({
+                                            "id": annotation_id,
+                                            "image_id": img_id,
+                                            "category_id": category_id,
+                                            "bbox": [
+                                                x_min,  # Absolute x_min
+                                                y_min,  # Absolute y_min
+                                                bbox_width,
+                                                bbox_height
+                                            ],
+                                            "area": area
+                                        })
+                                        annotation_id += 1  # Increment unique ID for each annotation
+                                    except Exception as bbox_error:
+                                        print(f"Error processing bounding box for image {img_id}: {bbox_error}")               
 
                         # Save COCO dataset to a JSON file
                         coco_path = tmp_dir / f"{dataset_name}.json"
