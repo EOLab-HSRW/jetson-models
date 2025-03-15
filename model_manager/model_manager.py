@@ -1,4 +1,6 @@
+import os
 import cv2
+import sys
 import json
 import gzip
 import base64
@@ -9,19 +11,24 @@ from pathlib import Path
 from typing import Dict, Any
 from models.base_model import BaseModel
 
-import os
+
+# Dynamically added the submodule path
+sys.path.append(os.path.abspath("vendor/pytorch_ssd"))
+sys.path.append(os.path.abspath("vendor/pytorch_ssd/vision"))
+sys.path.append(os.path.abspath("vendor/pytorch_ssd/vision/utils"))
+
 import torch
 from torch.utils.data import DataLoader
-from pytorch_ssd.vision.datasets.voc_dataset import VOCDataset
-from pytorch_ssd.vision.datasets.open_images import OpenImagesDataset
-from pytorch_ssd.vision.ssd.vgg_ssd import create_vgg_ssd
-from pytorch_ssd.vision.ssd.mobilenetv1_ssd import create_mobilenetv1_ssd
-from pytorch_ssd.vision.ssd.mobilenetv1_ssd_lite import create_mobilenetv1_ssd_lite
-from pytorch_ssd.vision.ssd.config import mobilenetv1_ssd_config
-from pytorch_ssd.vision.ssd.config import vgg_ssd_config
-from pytorch_ssd.vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
-from pytorch_ssd.vision.ssd.ssd import MatchPrior
-from pytorch_ssd.vision.nn.multibox_loss import MultiboxLoss
+from vendor.pytorch_ssd.vision.datasets.voc_dataset import VOCDataset
+from vendor.pytorch_ssd.vision.datasets.open_images import OpenImagesDataset
+from vendor.pytorch_ssd.vision.ssd.vgg_ssd import create_vgg_ssd
+from vendor.pytorch_ssd.vision.ssd.mobilenetv1_ssd import create_mobilenetv1_ssd
+from vendor.pytorch_ssd.vision.ssd.mobilenetv1_ssd_lite import create_mobilenetv1_ssd_lite
+from vendor.pytorch_ssd.vision.ssd.config import mobilenetv1_ssd_config
+from vendor.pytorch_ssd.vision.ssd.config import vgg_ssd_config
+from vendor.pytorch_ssd.vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
+from vendor.pytorch_ssd.vision.ssd.ssd import MatchPrior
+from vendor.pytorch_ssd.vision.nn.multibox_loss import MultiboxLoss
 
 train_transform = TrainAugmentation(300, [123,117,104], [1,1,1])
 test_transform = TestTransform(300, [123,117,104], [1,1,1])
