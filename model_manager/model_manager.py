@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Dict, Any
 from models.base_model import BaseModel
 
-
 # Dynamically added the submodule path
 sys.path.append(os.path.abspath("vendor/pytorch_ssd"))
 sys.path.append(os.path.abspath("vendor/pytorch_ssd/vision"))
@@ -115,6 +114,11 @@ class ModelManager:
                 await websocket.send(json.dumps(-1))
                 return None
 
+        if not "command" in data:
+            await websocket.send(json.dumps(0))
+            print("Error: Required ""command"" key does not exist into the data")
+            return None
+
         # Acknowledge success
         await websocket.send(json.dumps(1))
         print(f"Dataset processing completed successfully from client {websocket.remote_address}.")
@@ -130,7 +134,7 @@ class ModelManager:
         try:
 
             #Set the host ip
-            host = "192.168.1.25"
+            host = "0.0.0.0"
             port = 5000
 
             # Start the WebSocket server
@@ -154,7 +158,7 @@ class ModelManager:
                 # Distinguish between chunk metadata or normal request
                 if isinstance(message, str):
                     msg_json = json.loads(message)
-                    
+                        
                     if 'total_chunks' in msg_json:
                         # ---- CHUNK MODE ----
                         data = await self.receive_chunked_data(
@@ -163,6 +167,7 @@ class ModelManager:
                         )
                         # If there was an error, `receive_chunked_data` may return None:
                         if data is None:
+                            print("Error: Recived data from the client is none")
                             return
                     else:
                         # ---- NORMAL MESSAGE MODE ----
@@ -175,25 +180,31 @@ class ModelManager:
                 else:
                     # ---- NORMAL MESSAGE MODE ----
                     data = json.loads(message)
+
+                if not "command" in data:
+                    print("Error: Required ""command"" key does not exist into the data")
+                    await websocket.send(json.dumps(0))
+                    return
+
+                command = data["command"]
             
                 # Print the message received from the client
-                print(f"Message received from client {websocket.remote_address}: " "endpoint: " f"{path}")
+                print(f"Message received from client {websocket.remote_address}: " "with the command: " f"{command}")
 
-                if path == "/models":
+                if command == "/models":
                     await self.get_models(websocket)
-                elif path == "/models/launch":
+                elif command == "/models/launch":
                     await self.launch(websocket, data)
-                elif path == "/models/run":
+                elif command == "/models/run":
                     await self.run(websocket, data)
-                elif path == "/models/stop":
+                elif command == "/models/stop":
                     await self.stop(websocket, data)
-                elif path == "/models/running":
+                elif command == "/models/running":
                     await self.get_running(websocket)
-                elif path == "/models/running/info":
+                elif command == "/models/running/info":
                     await self.get_running_info(websocket)
-                elif path.startswith("/dataset/"):
-                    model_name = path[len("/dataset/"):]
-                    await self.prepare_dataset(websocket, model_name, data)
+                elif command == "/dataset":
+                    await self.prepare_dataset(websocket, data)
                 else:
                     print("error invalid action")
                     await websocket.send(json.dumps(-1))
@@ -205,12 +216,13 @@ class ModelManager:
             print(f"Unhandled error: {str(e)}")
             await websocket.send(json.dumps(-1))
 
-    #endpoint to launch the model
+    #command to launch the model
     async def launch(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
         """
         Launch a model
         
         Required JSON keys:
+        - "command": "/models/launch" indicate the action to launch a model
         - "model_name": Name of the model to launch (e.g., "detectnet")
         
         Optional keys (with defaults):
@@ -224,46 +236,50 @@ class ModelManager:
 
         try:
 
-            try:
-                model_name = str(data['model']).lower()
+            model_name = str(data['model']).lower()
 
-                if model_name == "base_model": 
-                    print("base_model is not supported")
-                    response = -1
-                else:
+            if model_name == "base_model": 
+                print("base_model is not supported")
+                response = -1
+            else:
                     
-                    #Getting the model class
-                    model_module = importlib.import_module(f"models.{model_name}")
-                    model_class = getattr(model_module, model_name)
+                #Getting the model class
+                model_module = importlib.import_module(f"models.{model_name}")
+                model_class = getattr(model_module, model_name)
 
-                    # Instantiate a temporary object to call its info method
-                    model_instance = model_class()
-                    success = model_instance.launch(data)
+                # Instantiate a temporary object to call its info method
+                model_instance = model_class()
+                success = model_instance.launch(data)
 
-                    if success:
-                        model_id = self.set_model_id()
-                        self.running_models[model_id] = model_instance
-                        response = model_id
-                        print(f"Model: {model_name} launched successfully with the model_id: {model_id}")
-                    else:
-                        response = -1
+                if success:
+                    model_id = self.set_model_id()
+                    self.running_models[model_id] = model_instance
+                    response = model_id
+                    print(f"Model: {model_name} launched successfully with the model_id: {model_id}")
+                else:
+                    response = -1
             
-            except (ModuleNotFoundError, AttributeError):
-                print(f"error: Model {model_name} is not supported or failed to load. Error: {e}")
-                response = -1         
-            await websocket.send(json.dumps(response))  
+        except (ModuleNotFoundError, AttributeError):
+            print(f"error: Model {model_name} is not supported or failed to load.")
+            response = -1
+            await websocket.send(json.dumps(response))
+            return         
 
         except Exception as e:
             print(f"error: {str(e)}")
             response = -1
             await websocket.send(json.dumps(response))
+            return
 
-    #endpoint to manage all the frames when a model is running
+        await websocket.send(json.dumps(response))  
+
+    #command to manage all the frames when a model is running
     async def run(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
         """
         Run a specific model with an image
         
         Required JSON keys:
+        - "command": "/models/run" indicate the action to run a model
         - "image": base_64 string of the recieved image.
         - "model_id": Model ID of an launched model.
 
@@ -301,12 +317,13 @@ class ModelManager:
             print(f"error {str(e)}")
             await websocket.send(json.dumps(response))
 
-    #endpoint to stop the current model
+    #command to stop the current model
     async def stop(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
         """
         Stop a running model.
         
         Required JSON keys:
+        - "command": "/models/stop" indicate the action to stop one or several models
         - "model_id": The model ID to stop, it can be an ID, a list of IDs or the string "all" or "ALL" to stops the models.  (e.g., 1000, [1000,1002,1025], "ALL")
 
         If any required key is missing, returns -1 and for spelling error, for no current running model, for an invalid model_id type return 0. 
@@ -373,9 +390,12 @@ class ModelManager:
             response = -1
             await websocket.send(json.dumps(response))
 
-    #endpoint to get a model_id list of the current running models
+    #command to get a model_id list of the current running models
     async def get_running(self, websocket: websockets.WebSocketServerProtocol) -> None:
         """
+        Required JSON keys:
+        - "command": "/models/running"
+
         Returns a model_id list of all the current running models.   
 
         If there are no running models returns 0.     
@@ -401,9 +421,12 @@ class ModelManager:
             response = -1
             await websocket.send(json.dumps(response))
 
-    #endpoint to know about the available models in the manager
+    #command to know about the available models in the manager
     async def get_models(self, websocket: websockets.WebSocketServerProtocol) -> None:
         """
+        Required JSON keys:
+        - "command": "/models"
+
         Returns a JSON with information about all available models inside the "/models" list folder.
         """
 
@@ -433,9 +456,12 @@ class ModelManager:
             response = -1
             await websocket.send(json.dumps(response))
 
-    #endpoint to get all the current running models
+    #command to get all the current running models
     async def get_running_info(self, websocket: websockets.WebSocketServerProtocol) -> None:
         """
+        Required JSON keys:
+        - "command": "/models/running/info"
+
         Returns a JSON with all the running models information
         """
 
@@ -462,12 +488,14 @@ class ModelManager:
             response = -1
             await websocket.send(json.dumps(response))
 
-    #endpoint to prepare the dataset format
-    async def prepare_dataset(self, websocket: websockets.WebSocketServerProtocol, model_name: str, data: Dict[str, Any]) -> None:
+    #command to prepare the dataset format
+    async def prepare_dataset(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
         """
         Prepare the dataset for training using COCO format.
         
         Required JSON keys for all the images:
+        - "command": "/dataset" indicate the action to create a dataset.
+        - "model_name" : Indicate the model name for retrain (e.g., detectnet)
         - "id": The number ID of an image.
         - "image": The string base64 encoded image.
         - "class_label": The string class label of image (e.g., "person").
@@ -478,6 +506,8 @@ class ModelManager:
 
         JSON Format:
         {
+            "command" : "/dataset",
+            "model_name" : "detectnet, 
             "dataset": [
                 {
                     "id": 1,
@@ -504,6 +534,14 @@ class ModelManager:
         """
 
         try:
+
+            if not "model_name" in data:
+                print("error: The requiered command or model_name key are missing")
+                await websocket.send(json.dumps(0)) 
+                return
+            
+            model_name = data["model_name"]
+
             response = 0
             model_name = model_name.lower()
             models_dir = Path(__file__).resolve().parent.parent / "models"
@@ -615,7 +653,7 @@ class ModelManager:
             response = -1
             await websocket.send(json.dumps(response)) 
     
-    #endpoint to retrain a model
+    #command to retrain a model
     async def retrain_model(self, websocket, data: dict) -> None:
         """
         Retrain a model using a prepared dataset.  
