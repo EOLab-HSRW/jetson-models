@@ -6,7 +6,7 @@
 
 ## Overview
 
-This repository provides a Python-based model manager designed for running AI inference models on a Jetson device. It leverages NVIDIA's Jetson Inference Library to manage deep learning models efficiently. Additionally, the manager sets up a WebSocket server, enabling remote clients to interact with the models and send images for real-time inference.
+This repository provides a Python-based model manager designed for running AI inference models on a Jetson device. It leverages NVIDIA's [`Jetson Inference Library`](https://github.com/dusty-nv/jetson-inference) to manage deep learning models efficiently. Additionally, the manager sets up a WebSocket server, enabling remote clients to interact with the models and send images for real-time inference.
 
 While the main objective is to facilitate model interaction through [Snap!](https://snap.berkeley.edu/), a block-based programming language for educational and demonstrative purposes, the manager also supports connectivity from any programming language that supports WebSocket communication. This makes it highly flexible for various applications.
 
@@ -28,7 +28,31 @@ Ensure you have the following dependencies installed before proceeding:
 - Ubuntu-based OS (JetPack recommended)
 - Python 3.6+
 
-### 1. Update System Packages
+### 1. Clone the Repository with Submodules
+
+This project includes **Git submodules**. To properly clone the repository, use the following command:
+
+```sh
+git clone https://github.com/EOLab-HSRW/jetson-models.git --recurse-submodules
+```
+
+This ensures that all submodule folders are initialized and downloaded automatically.
+
+**Updating Submodules**
+
+If any submodule gets updated in the repository, you can sync your local copies using:
+
+```sh
+git submodule update --init --recursive
+```
+
+Or, to pull the latest changes from submodules along with the main repository:
+
+```sh
+git pull --recurse-submodules
+```
+
+### 2. Update System Packages
 
 Before installing dependencies, update and upgrade your system:
 
@@ -37,7 +61,29 @@ sudo apt-get update
 sudo apt-get upgrade -y
 ```
 
-### 2. Install PyTorch Required Dependencies
+### 3. Install PyTorch and TorchVision (for Jetson)
+
+First, install gdown to download the correct versions of PyTorch and TorchVision:
+
+```sh
+pip install gdown
+
+```
+
+Then, download and install **PyTorch:**
+
+```sh
+gdown https://drive.google.com/uc?id=1TqC6_2cwqiYacjoLhLgrZoap6-sVL2sd
+pip3 install torch-1.10.0a0+git36449ea-cp36-cp36m-linux_aarch64.whl
+```
+
+Download and install **TorchVision:**
+
+```sh
+gdown https://drive.google.com/uc?id=1C7y6VSIBkmL2RQnVy8xF9cAnrrpJiJ-K
+pip3 install torchvision-0.11.0a0+fa347eb-cp36-cp36m-linux_aarch64.whl
+```
+
 To ensure compatibility with Jetson devices, install the required system packages:
 
 ```sh
@@ -62,7 +108,7 @@ sudo -H pip3 install --upgrade setuptools
 sudo -H pip3 install cython
 ```
 
-### 3. Install Model Manager Dependencies
+### 4. Install Model Manager Dependencies
 
 Navigate to the project directory and install all required dependencies:
 
@@ -125,4 +171,4 @@ websocket = await websockets.connect(uri)
 ```
 
 * You can connect to the server using any WebSocket-compatible client.
-* If using Snap!, ensure to use the **connect to** block.
+* If using Snap!, ensure to use the **link to** block.
