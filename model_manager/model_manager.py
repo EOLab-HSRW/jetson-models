@@ -3,12 +3,17 @@ import cv2
 import sys
 import json
 import gzip
+import shutil
+import random
 import base64
 import importlib
 import websockets
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from typing import Dict, Any
+from pycocotools.coco import COCO
+import xml.etree.ElementTree as ET
 from models.base_model import BaseModel
 
 # Dynamically added the submodule path
@@ -23,8 +28,11 @@ from vendor.pytorch_ssd.vision.datasets.open_images import OpenImagesDataset
 from vendor.pytorch_ssd.vision.ssd.vgg_ssd import create_vgg_ssd
 from vendor.pytorch_ssd.vision.ssd.mobilenetv1_ssd import create_mobilenetv1_ssd
 from vendor.pytorch_ssd.vision.ssd.mobilenetv1_ssd_lite import create_mobilenetv1_ssd_lite
+from vendor.pytorch_ssd.vision.ssd.squeezenet_ssd_lite import create_squeezenet_ssd_lite
+from vendor.pytorch_ssd.vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite
 from vendor.pytorch_ssd.vision.ssd.config import mobilenetv1_ssd_config
 from vendor.pytorch_ssd.vision.ssd.config import vgg_ssd_config
+from vendor.pytorch_ssd.vision.ssd.config import squeezenet_ssd_config
 from vendor.pytorch_ssd.vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
 from vendor.pytorch_ssd.vision.ssd.ssd import MatchPrior
 from vendor.pytorch_ssd.vision.nn.multibox_loss import MultiboxLoss
@@ -124,6 +132,166 @@ class ModelManager:
         print(f"Dataset processing completed successfully from client {websocket.remote_address}.")
         return data
 
+    def convert_coco_to_voc(self, coco, dataset_path, split_ratio=0.7):
+        """
+        Convert COCO JSON to Pascal VOC format.
+        Splits dataset into 70% trainval and 30% test.
+        """
+
+        voc_path = os.path.join(dataset_path, "VOC")
+        annotations_path = os.path.join(voc_path, "Annotations")
+        images_path = os.path.join(voc_path, "JPEGImages")
+        image_sets_path = os.path.join(voc_path, "ImageSets", "Main")
+
+        # Create directories
+        os.makedirs(annotations_path, exist_ok=True)
+        os.makedirs(images_path, exist_ok=True)
+        os.makedirs(image_sets_path, exist_ok=True)
+
+        # Create trainval.txt and test.txt
+        trainval_file = open(os.path.join(image_sets_path, "trainval.txt"), "w")
+        test_file = open(os.path.join(image_sets_path, "test.txt"), "w")
+
+        # Get all image IDs from COCO
+        image_ids = list(coco.imgs.keys())
+
+        # Shuffle and split 70% trainval / 30% test
+        random.shuffle(image_ids)
+        split_idx = int(len(image_ids) * split_ratio)
+        train_ids = image_ids[:split_idx]
+        test_ids = image_ids[split_idx:]
+
+        for img_id in image_ids:
+            img_info = coco.imgs[img_id]
+            img_filename = img_info["file_name"]
+            img_path = os.path.join(dataset_path, img_filename)
+
+            # Copy image to VOC format directory
+            shutil.copy(img_path, os.path.join(images_path, img_filename))
+
+            # Create VOC XML annotation file
+            xml_path = os.path.join(annotations_path, img_filename.replace(".jpg", ".xml"))
+            root = ET.Element("annotation")
+
+            ET.SubElement(root, "filename").text = img_filename
+
+            size = ET.SubElement(root, "size")
+            ET.SubElement(size, "width").text = str(img_info["width"])
+            ET.SubElement(size, "height").text = str(img_info["height"])
+
+            ann_ids = coco.getAnnIds(imgIds=img_id)
+            anns = coco.loadAnns(ann_ids)
+            for ann in anns:
+                obj = ET.SubElement(root, "object")
+                ET.SubElement(obj, "name").text = str(ann["category_id"])
+                bbox = ann["bbox"]
+                ET.SubElement(obj, "bndbox").text = f"{int(bbox[0])}, {int(bbox[1])}, {int(bbox[0]+bbox[2])}, {int(bbox[1]+bbox[3])}"
+
+            tree = ET.ElementTree(root)
+            tree.write(xml_path)
+
+            # Write to trainval.txt (70%) or test.txt (30%)
+            if img_id in train_ids:
+                trainval_file.write(img_filename.replace(".jpg", "") + "\n")
+            else:
+                test_file.write(img_filename.replace(".jpg", "") + "\n")
+
+        trainval_file.close()
+        test_file.close()
+
+    def convert_coco_to_openimages(self, coco, dataset_path, split_ratio=0.7):
+        """
+        Convert a COCO dataset into a simplified Open Images–style directory + CSV.
+        """
+
+        openimages_path = os.path.join(dataset_path, "OpenImages")
+        os.makedirs(openimages_path, exist_ok=True)
+
+        # Make subfolders for images
+        train_images_dir = os.path.join(openimages_path, "train")
+        test_images_dir = os.path.join(openimages_path, "test")
+        os.makedirs(train_images_dir, exist_ok=True)
+        os.makedirs(test_images_dir, exist_ok=True)
+
+        category_mapping = {
+            cat["id"]: cat["name"] for cat in coco.loadCats(coco.getCatIds())
+        }
+
+        train_csv_file = os.path.join(openimages_path, "sub-train-annotations-bbox.csv")
+        test_csv_file = os.path.join(openimages_path, "sub-test-annotations-bbox.csv")
+
+        train_rows = []
+        test_rows = []
+
+        image_ids = list(coco.imgs.keys())
+        random.shuffle(image_ids)
+        split_idx = int(len(image_ids) * split_ratio)
+
+        train_ids = set(image_ids[:split_idx])
+        test_ids = set(image_ids[split_idx:])
+
+        for img_id in image_ids:
+            img_info = coco.imgs[img_id]
+            filename = os.path.basename(img_info["file_name"])
+            original_img_path = os.path.join(dataset_path, filename)
+            if not os.path.exists(original_img_path):
+                print(f"WARNING: Image {filename} not found. Skipping.")
+                continue
+
+            # Remove the file extension for ImageID in the CSV
+            image_id_no_ext, _ = os.path.splitext(filename)
+
+            if img_id in train_ids:
+                dest_dir = train_images_dir
+                subset_rows = train_rows
+            else:
+                dest_dir = test_images_dir
+                subset_rows = test_rows
+
+            # Copy image into train/ or test/
+            dest_img_path = os.path.join(dest_dir, filename)
+            shutil.copy2(original_img_path, dest_img_path)
+
+            ann_ids = coco.getAnnIds(imgIds=img_id)
+            anns = coco.loadAnns(ann_ids)
+            img_w = float(img_info["width"])
+            img_h = float(img_info["height"])
+
+            for ann in anns:
+                x, y, w, h = ann["bbox"] 
+                category_id = ann["category_id"]
+                class_name = category_mapping.get(category_id, "unknown")
+
+                # Normalize to 0..1
+                x_min = x / img_w
+                x_max = (x + w) / img_w
+                y_min = y / img_h
+                y_max = (y + h) / img_h
+
+                row = [
+                    image_id_no_ext,
+                    x_min,
+                    x_max,
+                    y_min,
+                    y_max,
+                    class_name
+                ]
+                subset_rows.append(row)
+
+        cols = ["ImageID", "XMin", "XMax", "YMin", "YMax", "ClassName"]
+
+        if train_rows:
+            pd.DataFrame(train_rows, columns=cols).to_csv(train_csv_file, index=False)
+        else:
+            print("WARNING: No training images found.")
+
+        if test_rows:
+            pd.DataFrame(test_rows, columns=cols).to_csv(test_csv_file, index=False)
+        else:
+            print("WARNING: No testing images found.")
+
+        print(f"OpenImages dataset generated: {len(train_rows)} train annotations, {len(test_rows)} test annotations.")
+
 #region WebSocket Methods
 
     #WebSocket Inizialization
@@ -205,6 +373,8 @@ class ModelManager:
                     await self.get_running_info(websocket)
                 elif command == "/dataset":
                     await self.prepare_dataset(websocket, data)
+                elif command == "/retrain":
+                    await self.retrain_model(websocket, data)
                 else:
                     print("error invalid action")
                     await websocket.send(json.dumps(-1))
@@ -587,14 +757,14 @@ class ModelManager:
                             img_height, img_width = img.shape[:2]
 
                             # Save the image in the dataset folder
-                            img_path = tmp_dir / f"{img_id}.jpg"
+                            img_path = tmp_dir / f"img_{img_id}.jpg"
                             with open(img_path, "wb") as img_file:
                                 img_file.write(img_data)
 
                             # Add image information to COCO dataset
                             coco_data["images"].append({
                                 "id": img_id,
-                                "file_name": f"{img_id}.jpg",
+                                "file_name": f"img_{img_id}.jpg",
                                 "width": img_width,
                                 "height": img_height
                             })
@@ -629,7 +799,8 @@ class ModelManager:
                                                 bbox_width,
                                                 bbox_height
                                             ],
-                                            "area": area
+                                            "area": area,
+                                            "iscrowd": 0
                                         })
                                         annotation_id += 1  # Increment unique ID for each annotation
                                     except Exception as bbox_error:
@@ -659,9 +830,11 @@ class ModelManager:
         Retrain a model using a prepared dataset.  
         
         Required JSON keys:
+        - "command": "/retrain" indicate the action to retrain an available model.
         - "model_name": Name of the model to retrain (e.g., "detectnet")
         - "dataset_name": Name of the dataset folder (e.g., "New_dataset")
-        - "variant_name": New variant to use (e.g., "ssd-mobilenet-v2")
+        - "varitan_name": Name of the network architecture (e.g "mb2-ssd-lite")
+        - "new_variant_name": New variant to use (e.g., "Fruits")
         
         Optional keys (with defaults):
         - "dataset_type": "open_images" (or "voc")
@@ -690,13 +863,29 @@ class ModelManager:
 
         # Path to the prepared dataset (created by prepare_dataset)
         dataset_path = os.path.join("datasets", dataset_name)
-        if not os.path.exists(dataset_path):
-            print(f"Dataset path {dataset_path} does not exist.")
+        coco_json_path = os.path.join(dataset_path, f"{dataset_name}.json")
+
+        if not os.path.exists(dataset_path) or not os.path.exists(coco_json_path):
+            print(f"Error: Dataset path {dataset_path} or JSON file {coco_json_path} does not exist.")
             await websocket.send(json.dumps(-1))
             return
 
-        # Create training and validation datasets.
-        # Here we reuse the same folder for training and validation for simplicity.
+        # Load COCO dataset
+        coco = COCO(coco_json_path)
+
+        # **Convert dataset based on user selection**
+        if dataset_type == "voc":
+            self.convert_coco_to_voc(coco, dataset_path)
+            dataset_path = os.path.join(dataset_path, "VOC")
+        elif dataset_type == "open_images":
+            self.convert_coco_to_openimages(coco, dataset_path)
+            dataset_path = os.path.join(dataset_path, "OpenImages")
+        else:
+            print(f"Error: Unsupported dataset type '{dataset_type}' provided.")
+            await websocket.send(json.dumps(-1))
+            return
+
+        # **Load the converted dataset for training**
         if dataset_type == "voc":
             train_dataset = VOCDataset(dataset_path, transform=train_transform, target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
                                             mobilenetv1_ssd_config.center_variance,
@@ -706,41 +895,46 @@ class ModelManager:
                                             mobilenetv1_ssd_config.center_variance,
                                             mobilenetv1_ssd_config.size_variance, 0.5),
                                     is_test=True)
-            config = vgg_ssd_config 
-        else:
-            train_dataset = OpenImagesDataset(dataset_path, transform=train_transform, 
-                                            target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
-                                            mobilenetv1_ssd_config.center_variance,
-                                            mobilenetv1_ssd_config.size_variance, 0.5),
-                                            dataset_type="train")
-            val_dataset = OpenImagesDataset(dataset_path, transform=test_transform, 
-                                            target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
-                                            mobilenetv1_ssd_config.center_variance,
-                                            mobilenetv1_ssd_config.size_variance, 0.5),
-                                            dataset_type="test")
-            config = mobilenetv1_ssd_config
+            config = vgg_ssd_config
 
+        elif dataset_type == "open_images":
+            train_dataset = OpenImagesDataset(dataset_path, transform=train_transform, 
+                                                target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
+                                                mobilenetv1_ssd_config.center_variance,
+                                                mobilenetv1_ssd_config.size_variance, 0.5),
+                                                dataset_type="train")
+            val_dataset = OpenImagesDataset(dataset_path, transform=test_transform, 
+                                                target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
+                                                mobilenetv1_ssd_config.center_variance,
+                                                mobilenetv1_ssd_config.size_variance, 0.5),
+                                                dataset_type="test")
+            config = mobilenetv1_ssd_config
+    
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
 
         # Instantiate the network based on model_name and variant_name.
-        # For example, if retraining "detectnet" with variant "ssd-mobilenet-v2":
-        num_classes = 2  # Adjust as needed (number of classes + background)
         if model_name == "detectnet":
-            if variant_name == "ssd-mobilenet-v2":
-                net = create_mobilenetv1_ssd_lite(num_classes)
-                config = mobilenetv1_ssd_config
-            elif variant_name == "ssd-mobilenet-v1":
-                net = create_mobilenetv1_ssd(num_classes)
+            if variant_name == "ssd-mobilenet-v1" or variant_name == "mb1-ssd":
+                net = create_mobilenetv1_ssd
                 config = mobilenetv1_ssd_config
             elif variant_name == "vgg16-ssd":
-                net = create_vgg_ssd(num_classes)
+                net = create_vgg_ssd
                 config = vgg_ssd_config
+            elif variant_name == "mb1-ssd-lite":
+                net = create_mobilenetv1_ssd_lite
+                config = mobilenetv1_ssd_config
+            elif variant_name == 'sq-ssd-lite':
+                    net = create_squeezenet_ssd_lite
+                    config = squeezenet_ssd_config
+            elif variant_name == 'mb2-ssd-lite' or variant_name == "ssd-mobilenet-v2":
+                net = create_mobilenetv2_ssd_lite
+                config = mobilenetv1_ssd_config
             else:
                 print(f"Variant {variant_name} not recognized for model {model_name}.")
                 await websocket.send(json.dumps(-1))
                 return
-            config.set_image_size(300)  # example; adjust if necessary
+            config.set_image_size(300)
         else:
             print(f"Model {model_name} is not supported for retraining.")
             await websocket.send(json.dumps(-1))
