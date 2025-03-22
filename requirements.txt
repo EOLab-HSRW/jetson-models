@@ -1,7 +1,8 @@
 #Model manager dependencies
 websockets
 numpy
-opencv-python
+pandas
+pycocotools
 
 #Pytorch-ssd dependencies
 boto3
