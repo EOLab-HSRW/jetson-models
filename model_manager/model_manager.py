@@ -22,6 +22,8 @@ sys.path.append(os.path.abspath("vendor/pytorch_ssd/vision"))
 sys.path.append(os.path.abspath("vendor/pytorch_ssd/vision/utils"))
 
 import torch
+import hashlib
+import torch.onnx
 from torch.utils.data import DataLoader
 from vendor.pytorch_ssd.vision.datasets.voc_dataset import VOCDataset
 from vendor.pytorch_ssd.vision.datasets.open_images import OpenImagesDataset
@@ -152,6 +154,13 @@ class ModelManager:
         trainval_file = open(os.path.join(image_sets_path, "trainval.txt"), "w")
         test_file = open(os.path.join(image_sets_path, "test.txt"), "w")
 
+        # Create category ID → name mapping
+        category_mapping = {
+            cat["id"]: cat["name"] for cat in coco.loadCats(coco.getCatIds())
+        }
+
+        all_classes = set()
+
         # Get all image IDs from COCO
         image_ids = list(coco.imgs.keys())
 
@@ -182,10 +191,28 @@ class ModelManager:
             ann_ids = coco.getAnnIds(imgIds=img_id)
             anns = coco.loadAnns(ann_ids)
             for ann in anns:
+                category_id = ann["category_id"]
+                class_name = category_mapping.get(category_id)
+                if class_name is None:
+                    print(f"Skipping unknown category_id {category_id} in image {img_filename}")
+                    continue
+
+                all_classes.add(class_name)
+
                 obj = ET.SubElement(root, "object")
-                ET.SubElement(obj, "name").text = str(ann["category_id"])
+                ET.SubElement(obj, "name").text = class_name
+
                 bbox = ann["bbox"]
-                ET.SubElement(obj, "bndbox").text = f"{int(bbox[0])}, {int(bbox[1])}, {int(bbox[0]+bbox[2])}, {int(bbox[1]+bbox[3])}"
+                x_min = int(bbox[0])
+                y_min = int(bbox[1])
+                x_max = int(bbox[0] + bbox[2])
+                y_max = int(bbox[1] + bbox[3])
+
+                bndbox = ET.SubElement(obj, "bndbox")
+                ET.SubElement(bndbox, "xmin").text = str(x_min)
+                ET.SubElement(bndbox, "ymin").text = str(y_min)
+                ET.SubElement(bndbox, "xmax").text = str(x_max)
+                ET.SubElement(bndbox, "ymax").text = str(y_max)
 
             tree = ET.ElementTree(root)
             tree.write(xml_path)
@@ -198,6 +225,13 @@ class ModelManager:
 
         trainval_file.close()
         test_file.close()
+
+        # Save labels.txt
+        labels_path = os.path.join(voc_path, "labels.txt")
+        with open(labels_path, "w") as f:
+            for class_name in sorted(all_classes):
+                f.write(class_name + "\n")
+        print(f"Saved labels.txt with {len(all_classes)} classes.")
 
     def convert_coco_to_openimages(self, coco, dataset_path, split_ratio=0.7):
         """
@@ -839,14 +873,16 @@ class ModelManager:
         Optional keys (with defaults):
         - "dataset_type": "open_images" (or "voc")
         - "epochs": 30
-        - "batch_size": 4
+        - "batch_size": 1
         - "learning_rate": 0.01
         If any required key is missing, returns -1.
         On success, returns the variant_name.
         """
 
+        print("[INFO] Initiating retraining...")
+
         # Validate required parameters
-        for key in ["model_name", "dataset_name", "variant_name"]:
+        for key in ["model_name", "dataset_name", "variant_name", "new_variant_name"]:
             if key not in data:
                 await websocket.send(json.dumps(-1))
                 return
@@ -854,19 +890,20 @@ class ModelManager:
         model_name = data["model_name"].lower()
         dataset_name = data["dataset_name"]
         variant_name = data["variant_name"]
+        new_variant_name = data["new_variant_name"]
 
         # Optional training hyperparameters
         dataset_type = data.get("dataset_type", "open_images")
         epochs = int(data.get("epochs", 30))
-        batch_size = int(data.get("batch_size", 4))
+        batch_size = int(data.get("batch_size", 1))
         learning_rate = float(data.get("learning_rate", 0.01))
 
-        # Path to the prepared dataset (created by prepare_dataset)
+        # Path to the prepared dataset (in the main folder so far)
         dataset_path = os.path.join("datasets", dataset_name)
         coco_json_path = os.path.join(dataset_path, f"{dataset_name}.json")
 
         if not os.path.exists(dataset_path) or not os.path.exists(coco_json_path):
-            print(f"Error: Dataset path {dataset_path} or JSON file {coco_json_path} does not exist.")
+            print(f"[ERROR] Dataset path {dataset_path} or JSON file {coco_json_path} does not exist")
             await websocket.send(json.dumps(-1))
             return
 
@@ -875,18 +912,21 @@ class ModelManager:
 
         # **Convert dataset based on user selection**
         if dataset_type == "voc":
+            print("[INFO] Converting dataset to a VOC format...")
             self.convert_coco_to_voc(coco, dataset_path)
             dataset_path = os.path.join(dataset_path, "VOC")
         elif dataset_type == "open_images":
+            print("[INFO] Converting dataset to a OpenImages format...")
             self.convert_coco_to_openimages(coco, dataset_path)
             dataset_path = os.path.join(dataset_path, "OpenImages")
         else:
-            print(f"Error: Unsupported dataset type '{dataset_type}' provided.")
+            print(f"[Error] Unsupported dataset type '{dataset_type}' provided.")
             await websocket.send(json.dumps(-1))
             return
 
         # **Load the converted dataset for training**
         if dataset_type == "voc":
+            print("[INFO] Loading datasets for training and validation...")
             train_dataset = VOCDataset(dataset_path, transform=train_transform, target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
                                             mobilenetv1_ssd_config.center_variance,
                                             mobilenetv1_ssd_config.size_variance, 0.5))
@@ -898,6 +938,7 @@ class ModelManager:
             config = vgg_ssd_config
 
         elif dataset_type == "open_images":
+            print("[INFO] Loading datasets for training and validation...")
             train_dataset = OpenImagesDataset(dataset_path, transform=train_transform, 
                                                 target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
                                                 mobilenetv1_ssd_config.center_variance,
@@ -909,26 +950,32 @@ class ModelManager:
                                                 mobilenetv1_ssd_config.size_variance, 0.5),
                                                 dataset_type="test")
             config = mobilenetv1_ssd_config
+
+        print(f"[INFO] Loaded Dataset with: {len(train_dataset)} train images and, {len(val_dataset)} for validation")
+
+        num_classes = len(train_dataset.class_names)
+        print(f"[INFO] Detected classes amount: {num_classes}")
     
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 
         # Instantiate the network based on model_name and variant_name.
         if model_name == "detectnet":
+            print(f"[INFO] Initializing architecture '{variant_name}'...")
             if variant_name == "ssd-mobilenet-v1" or variant_name == "mb1-ssd":
-                net = create_mobilenetv1_ssd
+                net = create_mobilenetv1_ssd(num_classes)
                 config = mobilenetv1_ssd_config
             elif variant_name == "vgg16-ssd":
-                net = create_vgg_ssd
+                net = create_vgg_ssd(num_classes)
                 config = vgg_ssd_config
             elif variant_name == "mb1-ssd-lite":
-                net = create_mobilenetv1_ssd_lite
+                net = create_mobilenetv1_ssd_lite(num_classes)
                 config = mobilenetv1_ssd_config
             elif variant_name == 'sq-ssd-lite':
-                    net = create_squeezenet_ssd_lite
+                    net = create_squeezenet_ssd_lite(num_classes)
                     config = squeezenet_ssd_config
             elif variant_name == 'mb2-ssd-lite' or variant_name == "ssd-mobilenet-v2":
-                net = create_mobilenetv2_ssd_lite
+                net = create_mobilenetv2_ssd_lite(num_classes)
                 config = mobilenetv1_ssd_config
             else:
                 print(f"Variant {variant_name} not recognized for model {model_name}.")
@@ -942,6 +989,7 @@ class ModelManager:
 
         # Set up device, loss function, and optimizer
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        print(f"[INFO] Starting training in device: {device}")
         net.to(device)
         criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
                                 center_variance=config.center_variance,
@@ -950,25 +998,63 @@ class ModelManager:
 
         # Training loop (synchronous; consider running in a separate thread/task if needed)
         for epoch in range(epochs):
+            print(f"[EPOCH {epoch+1}/{epochs}] Training...")
             train_loss = self._train_epoch(train_loader, net, criterion, optimizer, device, epoch)
+            print(f"[EPOCH {epoch+1}] Train Loss: {train_loss:.4f}")
+            
+            print(f"[EPOCH {epoch+1}] Validating...")
             val_loss = self._validate_epoch(val_loader, net, criterion, device)
-            print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+            print(f"[EPOCH {epoch+1}] Val Loss: {val_loss:.4f}")
 
-        save_directory = "/usr/local/bin/networks" #Default jetson network folder
+        base_directory = "/usr/local/bin/networks"
+        save_directory = os.path.join(base_directory, new_variant_name)
+        os.makedirs(save_directory, exist_ok=True)
 
-        model_path = os.path.join(save_directory, f"{variant_name}.pth")
-        net.save(model_path)
-        print(f"Saved model {model_path}")
+        # Export to ONNX
+        print("[INFO] Exporting model to ONNX...")
+        onnx_path = os.path.join(save_directory, f"{new_variant_name}.onnx")
+        net.eval()
+        dummy_input = torch.randn(1, 3, 300, 300).to(device)
 
-        # Return the variant_name as an indication of success.
-        await websocket.send(json.dumps(variant_name))
+        torch.onnx.export(net, dummy_input, onnx_path,
+            export_params=True,
+            opset_version=11,
+            input_names=['input'],
+            output_names=['confidences', 'boxes']
+        )
+        
+        print(f"[INFO] Exported ONNX model to: {onnx_path}")
+
+        # Save labels.txt
+        print("[INFO] Saving class labels...")
+        labels_txt_path = os.path.join(save_directory, f"{new_variant_name}_labels.txt")
+        with open(labels_txt_path, "w") as f:
+            for label in train_dataset.class_names:
+                f.write(label + "\n")
+        print(f"[INFO] Saved labels to: {labels_txt_path}")
+
+        # Save .sha256sum
+        print("[INFO] Creating SHA256 checksum...")
+        def write_sha256(path):
+            with open(path, "rb") as f:
+                data = f.read()
+            hash = hashlib.sha256(data).hexdigest()
+            sum_path = path + ".sha256sum"
+            with open(sum_path, "w") as f:
+                f.write(hash)
+            print(f"[INFO] Saved SHA256 to: {sum_path}")
+
+        write_sha256(onnx_path)
+
+        print("[INFO] Model retraining and export completed successfully.")
+        # Return the new variant name as an indication of success.
+        await websocket.send(json.dumps(new_variant_name))
 
     def _train_epoch(self, train_loader, net, criterion, optimizer, device, epoch):
         net.train()
         running_loss = 0.0
         num_batches = 0
         for i, data in enumerate(train_loader):
-            # Unpack data (assumes dataset returns (image, boxes, labels))
             images, boxes, labels = data
             images = images.to(device)
             boxes = boxes.to(device)
