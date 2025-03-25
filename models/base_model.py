@@ -13,6 +13,11 @@ class BaseModel(ABC):
     def variant(self):
         pass
 
+    @property
+    @abstractmethod
+    def is_custom(self):
+        pass
+
     @abstractmethod
     def launch(self, data):
         raise NotImplementedError()
