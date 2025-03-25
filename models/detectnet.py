@@ -1,3 +1,5 @@
+import os
+import cv2
 import jetson_utils
 import jetson_inference
 from utils.utils import create_option
@@ -21,6 +23,10 @@ class detectnet(BaseModel):
     @property
     def variant(self):
         return self.__variant
+    
+    @property
+    def is_custom(self):
+        return self.__is_custom
 #endregion
 
 #region Methods
@@ -28,18 +34,60 @@ class detectnet(BaseModel):
     def launch(self, data):
 
         try:
-            self.__model_name = data.get('model')
-            self.__variant = data.get('variant', "ssd-mobilenet-v2")
+            self.__model_name = data.get('model_name')
+            self.__variant = data.get('variant_name', "ssd-mobilenet-v2")
             self.__threshold = data.get('threshold', 0.5)
             self.__overlay = data.get('overlay', 'box,labels,conf')
-            self.__detectnet = jetson_inference.detectNet(network=self.__variant, threshold=self.__threshold)
+            self.__is_custom = False
+            
+            # Built-in Jetson-inference model names
+            predefined_models = [
+                "ssd-mobilenet-v1", "ssd-mobilenet-v2", "ssd-inception-v2",
+                "peoplenet", "peoplenet-pruned", "dashcamnet", "trafficcamnet", "facedetect"
+            ]
+
+            if self.__variant in predefined_models:
+                print(f"[INFO] Launching built-in model: {self.__variant}")
+                self.__detectnet = jetson_inference.detectNet(
+                    network=self.__variant,
+                    threshold=self.__threshold
+                )
+
+            else:
+                # Try to load custom ONNX model
+                model_dir = os.path.join("/usr/local/bin/networks", self.__variant)
+                onnx_path = os.path.join(model_dir, f"{self.__variant}.onnx")
+                labels_path = os.path.join(model_dir, f"{self.__variant}_labels.txt")
+
+                if not os.path.exists(onnx_path):
+                    print(f"[ERROR] ONNX mdeol not found: {onnx_path}")
+                    return False
+                if not os.path.exists(labels_path):
+                    print(f"[ERROR] Labels file not found: {labels_path}")
+                    return False
+
+                print(f"[INFO] Launching custom model from: {model_dir}")
+                self.__detectnet = jetson_inference.detectNet(
+                    model=onnx_path,
+                    labels=labels_path,
+                    input_blob="input",
+                    output_cvg="confidences",
+                    output_bbox="boxes",
+                    threshold=self.__threshold
+                )
+                self.__overlay = 'none'
+                self.__is_custom = True
+
             return True
 
         except Exception as e:
-            print(f"Error inizializing the model: {str(e)}")
+            print(f"[Error] Error inizializing the model: {str(e)}")
             return False
 
     def run(self, img):
+
+        if self.is_custom:
+            img = cv2.resize(img, (300,300))
 
         img_height, img_width = img.shape[:2]
 
