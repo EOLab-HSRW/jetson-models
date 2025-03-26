@@ -3,6 +3,7 @@ websockets
 numpy
 pandas
 pycocotools
+lxml  
 
 #Pytorch-ssd dependencies
 boto3
