@@ -64,7 +64,7 @@ class ModelManager:
             current_id += 1
         return current_id
 
-    async def receive_chunked_data(self, websocket, initial_metadata: dict) -> dict:
+    async def receive_chunked_data(self, websocket: websockets.WebSocketServerProtocol, initial_metadata: dict) -> dict:
         """
         Helper function to read the remaining chunked data.
         Returns the final parsed JSON data, or None if there's an error.
@@ -134,7 +134,7 @@ class ModelManager:
         print(f"Dataset processing completed successfully from client {websocket.remote_address}.")
         return data
 
-    def convert_coco_to_voc(self, coco, dataset_path, split_ratio=0.7):
+    def convert_coco_to_voc(self, coco: COCO, dataset_path: str, split_ratio=0.7) -> None:
         """
         Convert COCO JSON to Pascal VOC format.
         Splits dataset into 70% trainval and 30% test.
@@ -194,7 +194,7 @@ class ModelManager:
                 category_id = ann["category_id"]
                 class_name = category_mapping.get(category_id)
                 if class_name is None:
-                    print(f"Skipping unknown category_id {category_id} in image {img_filename}")
+                    print(f"[INFO] Skipping unknown category_id {category_id} in image {img_filename}")
                     continue
 
                 all_classes.add(class_name)
@@ -231,9 +231,9 @@ class ModelManager:
         with open(labels_path, "w") as f:
             for class_name in sorted(all_classes):
                 f.write(class_name + "\n")
-        print(f"Saved labels.txt with {len(all_classes)} classes.")
+        print(f"[INFO] Saved labels.txt with {len(all_classes)} classes.")
 
-    def convert_coco_to_openimages(self, coco, dataset_path, split_ratio=0.7):
+    def convert_coco_to_openimages(self, coco: COCO, dataset_path: str, split_ratio=0.7) -> None:
         """
         Convert a COCO dataset into a simplified Open Images–style directory + CSV.
         """
@@ -269,7 +269,7 @@ class ModelManager:
             filename = os.path.basename(img_info["file_name"])
             original_img_path = os.path.join(dataset_path, filename)
             if not os.path.exists(original_img_path):
-                print(f"WARNING: Image {filename} not found. Skipping.")
+                print(f"[WARNING] Image {filename} not found. Skipping.")
                 continue
 
             # Remove the file extension for ImageID in the CSV
@@ -297,10 +297,10 @@ class ModelManager:
                 class_name = category_mapping.get(category_id, "unknown")
 
                 # Normalize to 0..1
-                x_min = x / img_w
-                x_max = (x + w) / img_w
-                y_min = y / img_h
-                y_max = (y + h) / img_h
+                x_min = max(0.0, min(1.0, x / img_w))
+                x_max = max(0.0, min(1.0, (x + w) / img_w))
+                y_min = max(0.0, min(1.0, y / img_h))
+                y_max = max(0.0, min(1.0, (y + h) / img_h))
 
                 row = [
                     image_id_no_ext,
@@ -317,14 +317,14 @@ class ModelManager:
         if train_rows:
             pd.DataFrame(train_rows, columns=cols).to_csv(train_csv_file, index=False)
         else:
-            print("WARNING: No training images found.")
+            print("[WARNING] No training images found.")
 
         if test_rows:
             pd.DataFrame(test_rows, columns=cols).to_csv(test_csv_file, index=False)
         else:
-            print("WARNING: No testing images found.")
+            print("[WARNING] No testing images found.")
 
-        print(f"OpenImages dataset generated: {len(train_rows)} train annotations, {len(test_rows)} test annotations.")
+        print(f"[INFO] OpenImages dataset generated: {len(train_rows)} train annotations, {len(test_rows)} test annotations.")
 
 #region WebSocket Methods
 
@@ -440,7 +440,7 @@ class ModelManager:
 
         try:
 
-            model_name = str(data['model']).lower()
+            model_name = str(data['model_name']).lower()
 
             if model_name == "base_model": 
                 print("base_model is not supported")
@@ -859,7 +859,7 @@ class ModelManager:
             await websocket.send(json.dumps(response)) 
     
     #command to retrain a model
-    async def retrain_model(self, websocket, data: dict) -> None:
+    async def retrain_model(self, websocket: websockets.WebSocketServerProtocol, data: dict) -> None:
         """
         Retrain a model using a prepared dataset.  
         
@@ -871,6 +871,7 @@ class ModelManager:
         - "new_variant_name": New variant to use (e.g., "Fruits")
         
         Optional keys (with defaults):
+        - "retrain_mode": "new" or "extend"
         - "dataset_type": "open_images" (or "voc")
         - "epochs": 30
         - "batch_size": 1
@@ -879,11 +880,14 @@ class ModelManager:
         On success, returns the variant_name.
         """
 
-        print("[INFO] Initiating retraining...")
+        base_directory = "/usr/local/bin/networks"
+
+        print("[INFO] Beginning retraining...")
 
         # Validate required parameters
         for key in ["model_name", "dataset_name", "variant_name", "new_variant_name"]:
             if key not in data:
+                print("[ERROR] Any required field is missing")
                 await websocket.send(json.dumps(-1))
                 return
 
@@ -893,10 +897,31 @@ class ModelManager:
         new_variant_name = data["new_variant_name"]
 
         # Optional training hyperparameters
-        dataset_type = data.get("dataset_type", "open_images")
-        epochs = int(data.get("epochs", 30))
-        batch_size = int(data.get("batch_size", 1))
-        learning_rate = float(data.get("learning_rate", 0.01))
+        if "dataset_type" in data:
+            dataset_type = data["dataset_type"]
+        else:
+            dataset_type = "open_images"
+
+        if "epochs" in data:
+            epochs = data["epochs"]
+        else:
+            epochs = 30
+
+        if "batch_size" in data:
+            batch_size = data[batch_size]
+        else:
+            batch_size = 1
+
+        if "learning_rate" in data:
+            learning_rate = data["learning_rate"]
+        else:
+            learning_rate = 0.01
+
+        #Verify if there is already a model with the same name as the new variant
+        if os.path.exists(os.path.join(base_directory, new_variant_name)):
+            print(f"[ERROR] A model already exists with the name {new_variant_name}")
+            await websocket.send(json.dumps(0))
+            return
 
         # Path to the prepared dataset (in the main folder so far)
         dataset_path = os.path.join("datasets", dataset_name)
@@ -1006,7 +1031,7 @@ class ModelManager:
             val_loss = self._validate_epoch(val_loader, net, criterion, device)
             print(f"[EPOCH {epoch+1}] Val Loss: {val_loss:.4f}")
 
-        base_directory = "/usr/local/bin/networks"
+        
         save_directory = os.path.join(base_directory, new_variant_name)
         os.makedirs(save_directory, exist_ok=True)
 
@@ -1045,6 +1070,9 @@ class ModelManager:
             print(f"[INFO] Saved SHA256 to: {sum_path}")
 
         write_sha256(onnx_path)
+
+        del net
+        torch.cuda.empty_cache()
 
         print("[INFO] Model retraining and export completed successfully.")
         # Return the new variant name as an indication of success.
