@@ -75,33 +75,33 @@ class ModelManager:
         compressed = initial_metadata.get("compressed", False)
         chunks_received = 0
 
-        print(f"Chunk metadata received: {initial_metadata}")
+        print(f"[INFO] Chunk metadata received: {initial_metadata}")
 
         while True:
             try:
                 message = await websocket.recv()
             except websockets.ConnectionClosed:
-                print("Connection closed while receiving chunks.")
+                print("[ERROR] Connection closed while receiving chunks.")
                 return None
 
             if isinstance(message, str):
                 # We expect a “__END__” or an error here
                 msg_json = json.loads(message)
                 if msg_json.get("type") == "__END__":
-                    print("Received __END__ message, finishing reception.")
+                    print("[INFO] Received __END__ message, finishing reception.")
                     break
                 else:
-                    print(f"Unexpected string message while reading chunks: {msg_json}")
+                    print(f"[ERROR] Unexpected string message while reading chunks: {msg_json}")
                     await websocket.send(json.dumps({"error": "Unexpected string message in chunk mode"}))
                     return None
             else:
                 # message is bytes → next chunk
                 received_data += message
                 chunks_received += 1
-                print(f"Received chunk {chunks_received}/{expected_chunks}")
+                print(f"[INFO] Received chunk {chunks_received}/{expected_chunks}")
 
         if chunks_received != expected_chunks:
-            print(f"Chunk count mismatch: expected {expected_chunks}, got {chunks_received}")
+            print(f"[ERROR] Chunk count mismatch: expected {expected_chunks}, got {chunks_received}")
             await websocket.send(json.dumps(-1))
             return None
 
@@ -110,28 +110,27 @@ class ModelManager:
             try:
                 decompressed_data = gzip.decompress(received_data).decode()
                 data = json.loads(decompressed_data)
-                print(f"Successfully decompressed and loaded dataset with {len(data['dataset'])} images.")
+                print(f"[INFO] Successfully decompressed and loaded dataset with {len(data['dataset'])} images.")
             except Exception as e:
-                print(f"Gzip decompression or JSON parsing failed: {str(e)}")
+                print(f"[ERROR] Gzip decompression or JSON parsing failed: {str(e)}")
                 await websocket.send(json.dumps(-1))
                 return None
         else:
             try:
                 data = json.loads(received_data.decode())
-                print("Successfully loaded uncompressed dataset.")
+                print("[INFO] Successfully loaded uncompressed dataset.")
             except Exception as e:
-                print(f"JSON parsing failed: {str(e)}")
+                print(f"[ERROR] JSON parsing failed: {str(e)}")
                 await websocket.send(json.dumps(-1))
                 return None
 
         if not "command" in data:
             await websocket.send(json.dumps(0))
-            print("Error: Required ""command"" key does not exist into the data")
+            print("[ERROR] Required ""command"" key does not exist into the data")
             return None
 
         # Acknowledge success
-        await websocket.send(json.dumps(1))
-        print(f"Dataset processing completed successfully from client {websocket.remote_address}.")
+        print(f"[INFO] Dataset processing completed successfully from client {websocket.remote_address}.")
         return data
 
     def convert_coco_to_voc(self, coco: COCO, dataset_path: str, split_ratio=0.7) -> None:
@@ -269,7 +268,7 @@ class ModelManager:
             filename = os.path.basename(img_info["file_name"])
             original_img_path = os.path.join(dataset_path, filename)
             if not os.path.exists(original_img_path):
-                print(f"[WARNING] Image {filename} not found. Skipping.")
+                print(f"[WARN] Image {filename} not found. Skipping.")
                 continue
 
             # Remove the file extension for ImageID in the CSV
@@ -317,12 +316,12 @@ class ModelManager:
         if train_rows:
             pd.DataFrame(train_rows, columns=cols).to_csv(train_csv_file, index=False)
         else:
-            print("[WARNING] No training images found.")
+            print("[WARN] No training images found.")
 
         if test_rows:
             pd.DataFrame(test_rows, columns=cols).to_csv(test_csv_file, index=False)
         else:
-            print("[WARNING] No testing images found.")
+            print("[WARN] No testing images found.")
 
         print(f"[INFO] OpenImages dataset generated: {len(train_rows)} train annotations, {len(test_rows)} test annotations.")
 
@@ -332,22 +331,22 @@ class ModelManager:
     async def start_server(self) -> None:
         """Start the WebSocket server"""
 
-        print("WebSocket server is starting...")
+        print("[INFO] WebSocket server is starting...")
         try:
 
             #Set the host ip
-            host = "0.0.0.0"
+            host = "192.168.1.25"
             port = 5000
 
             # Start the WebSocket server
             self.server = await websockets.serve(self.handle_client, host , port)
-            print(f"Server running on ws://{host}:{port}")    
+            print(f"[INFO] Server running on ws://{host}:{port}")    
             await self.server.wait_closed()
             
         except Exception as e:
-            print(f"Error starting the server: {e}")
+            print(f"[ERROR] Error starting the server: {e}")
         finally:
-            print("Server shutdown.")
+            print("[INFO] Server shutdown.")
 
     #Handle actions with the client
     async def handle_client(self, websocket: websockets.WebSocketServerProtocol, path: str) -> None:
@@ -369,14 +368,14 @@ class ModelManager:
                         )
                         # If there was an error, `receive_chunked_data` may return None:
                         if data is None:
-                            print("Error: Recived data from the client is none")
+                            print("[INFO] Recived data from the client is none")
                             return
                     else:
                         # ---- NORMAL MESSAGE MODE ----
                         data = msg_json
 
                 elif isinstance(message, bytes):
-                    print("error: First message not recognized as valid JSON")
+                    print("[ERROR] First message not recognized as valid JSON")
                     await websocket.send(json.dumps(-1))
                     return
                 else:
@@ -384,14 +383,14 @@ class ModelManager:
                     data = json.loads(message)
 
                 if not "command" in data:
-                    print("Error: Required ""command"" key does not exist into the data")
+                    print("[WARN] Required ""command"" key does not exist into the data")
                     await websocket.send(json.dumps(0))
                     return
 
                 command = data["command"]
             
                 # Print the message received from the client
-                print(f"Message received from client {websocket.remote_address}: " "with the command: " f"{command}")
+                print(f"[INFO] Message received from client {websocket.remote_address}: " "with the command: " f"{command}")
 
                 if command == "/models":
                     await self.get_models(websocket)
@@ -410,14 +409,14 @@ class ModelManager:
                 elif command == "/retrain":
                     await self.retrain_model(websocket, data)
                 else:
-                    print("error invalid action")
+                    print("[ERROR] Invalid action")
                     await websocket.send(json.dumps(-1))
 
         except websockets.ConnectionClosed as e:
-            print(f"Client disconnected unexpectedly: {str(e)}")
+            print(f"[ERROR] Client disconnected unexpectedly: {str(e)}")
             await websocket.send(json.dumps(-1))
         except Exception as e:
-            print(f"Unhandled error: {str(e)}")
+            print(f"[ERROR] Unhandled error: {str(e)}")
             await websocket.send(json.dumps(-1))
 
     #command to launch the model
@@ -443,8 +442,8 @@ class ModelManager:
             model_name = str(data['model_name']).lower()
 
             if model_name == "base_model": 
-                print("base_model is not supported")
-                response = -1
+                print("[WARN] base_model is not supported")
+                response = 0
             else:
                     
                 #Getting the model class
@@ -459,18 +458,18 @@ class ModelManager:
                     model_id = self.set_model_id()
                     self.running_models[model_id] = model_instance
                     response = model_id
-                    print(f"Model: {model_name} launched successfully with the model_id: {model_id}")
+                    print(f"[INFO] Model: {model_name} launched successfully with the model_id: {model_id}")
                 else:
                     response = -1
             
         except (ModuleNotFoundError, AttributeError):
-            print(f"error: Model {model_name} is not supported or failed to load.")
+            print(f"[ERROR] Model {model_name} is not supported or failed to load.")
             response = -1
             await websocket.send(json.dumps(response))
             return         
 
         except Exception as e:
-            print(f"error: {str(e)}")
+            print(f"[ERROR] {str(e)}")
             response = -1
             await websocket.send(json.dumps(response))
             return
@@ -496,7 +495,7 @@ class ModelManager:
             try:
 
                 if len(self.running_models) == 0:
-                    print("error no model is currently running")
+                    print("[WARN] No model is running...")
                     response = 0
                 else:
                     base64_img = data['image']
@@ -508,17 +507,17 @@ class ModelManager:
                         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
                         response = self.running_models[model_id].run(img)
                     else:
-                        print(f"error: No model is currently running with the model_id: {model_id}")
+                        print(f"[WARN] No model is currently running with the model_id: {model_id}")
                         response = 0
 
             except Exception as e:
-                print(f"error: Error during model execution: {str(e)}")
+                print(f"[ERROR] Error during model execution: {str(e)}")
                 response = -1
 
             await websocket.send(json.dumps(response))  
         except Exception as e:
             response = -1
-            print(f"error {str(e)}")
+            print(f"[ERROR] {str(e)}")
             await websocket.send(json.dumps(response))
 
     #command to stop the current model
@@ -538,7 +537,7 @@ class ModelManager:
         try:
 
             if len(self.running_models) == 0: 
-                print("No model is running")
+                print("[WARN] No model is running...")
                 response = 0
             else:
 
@@ -550,7 +549,7 @@ class ModelManager:
                         stopped_models.append(id)
                         self.running_models[id].stop()
                     self.running_models.clear()
-                    print("All the models have been stopped successfully")
+                    print("[INFO] All the models have been stopped successfully")
                     response = stopped_models
 
                 elif isinstance(model_id, int):
@@ -560,9 +559,9 @@ class ModelManager:
                         response = model_id
                         self.running_models[model_id].stop()
                         del self.running_models[model_id]
-                        print(f"Model: {model_name} with the model_id: {model_id} has been stopped successfully")
+                        print(f"[INFO] Model: {model_name} with the model_id: {model_id} has been stopped successfully")
                     else:
-                        print(f"There is no model with the model_id: {model_id}")
+                        print(f"[WARN] There is no model with the model_id: {model_id}")
                         response = 0
 
                 elif isinstance(model_id, list):
@@ -578,19 +577,19 @@ class ModelManager:
                             self.running_models[model_id].stop()
                             del self.running_models[model_id]
                             response = stopped_models
-                            print(f"Model: {model_name} with the model_id {model_id} has been stopped successfully")
+                            print(f"[INFO] Model: {model_name} with the model_id {model_id} has been stopped successfully")
 
                         else:
                             response = 0
-                            print(f"There is no model with the model_id: {model_id}")
+                            print(f"[WARN] There is no model with the model_id: {model_id}")
 
                 else:
-                    print(f"Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list.")
+                    print(f"[ERROR] Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list.")
                     response = 0
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"error: {e}")
+            print(f"[ERROR] {e}")
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -608,7 +607,7 @@ class ModelManager:
         try:
 
             if  len(self.running_models) == 0:
-                print("No model is running")
+                print("[WARN] No model is running...")
                 response = 0
             else:
 
@@ -621,7 +620,7 @@ class ModelManager:
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"error: {str(e)}")
+            print(f"[ERROR] {str(e)}")
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -656,7 +655,7 @@ class ModelManager:
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"error: {str(e)}")
+            print(f"[ERROR] {str(e)}")
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -672,7 +671,7 @@ class ModelManager:
         try:
 
             if  len(self.running_models) == 0:
-                print("model_id no model is running")
+                print("[WARN] No model is running...")
                 response = 0
             else:
 
@@ -688,7 +687,7 @@ class ModelManager:
 
             await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"error: {str(e)}")
+            print(f"[ERROR] {str(e)}")
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -740,7 +739,7 @@ class ModelManager:
         try:
 
             if not "model_name" in data:
-                print("error: The requiered command or model_name key are missing")
+                print("[ERROR] The requiered command or model_name key are missing")
                 await websocket.send(json.dumps(0)) 
                 return
             
@@ -819,7 +818,7 @@ class ModelManager:
                                         area = bbox_width * bbox_height
 
                                         if bbox_width <= 0 or bbox_height <= 0:
-                                            print(f"Skipping invalid bounding box for image ID {img_id}")
+                                            print(f"[INFO] Skipping invalid bounding box for image ID {img_id}")
                                             continue
 
                                         # Add bounding box annotation
@@ -838,7 +837,7 @@ class ModelManager:
                                         })
                                         annotation_id += 1  # Increment unique ID for each annotation
                                     except Exception as bbox_error:
-                                        print(f"Error processing bounding box for image {img_id}: {bbox_error}")               
+                                        print(f"[ERROR] Processing bounding box for image {img_id}: {bbox_error}")               
 
                         # Save COCO dataset to a JSON file
                         coco_path = tmp_dir / f"{dataset_name}.json"
@@ -849,12 +848,12 @@ class ModelManager:
 
                     else:
                         response = -1
-                        print(f"error: The dataset or class_label is missing")
+                        print(f"[ERROR] The dataset or class_label is missing")
 
             await websocket.send(json.dumps(response))
 
         except Exception as e:
-            print(f"error: {str(e)}")
+            print(f"[ERROR] {str(e)}")
             response = -1
             await websocket.send(json.dumps(response)) 
     
@@ -903,17 +902,17 @@ class ModelManager:
             dataset_type = "open_images"
 
         if "epochs" in data:
-            epochs = data["epochs"]
+            epochs = int(data["epochs"])
         else:
             epochs = 30
 
         if "batch_size" in data:
-            batch_size = data[batch_size]
+            batch_size = data["batch_size"]
         else:
             batch_size = 1
 
         if "learning_rate" in data:
-            learning_rate = data["learning_rate"]
+            learning_rate = float(data["learning_rate"])
         else:
             learning_rate = 0.01
 
@@ -1003,12 +1002,12 @@ class ModelManager:
                 net = create_mobilenetv2_ssd_lite(num_classes)
                 config = mobilenetv1_ssd_config
             else:
-                print(f"Variant {variant_name} not recognized for model {model_name}.")
+                print(f"[ERROR] Variant {variant_name} not recognized for model {model_name}.")
                 await websocket.send(json.dumps(-1))
                 return
             config.set_image_size(300)
         else:
-            print(f"Model {model_name} is not supported for retraining.")
+            print(f"[ERROR] Model {model_name} is not supported for retraining.")
             await websocket.send(json.dumps(-1))
             return
 
@@ -1078,7 +1077,7 @@ class ModelManager:
         # Return the new variant name as an indication of success.
         await websocket.send(json.dumps(new_variant_name))
 
-    def _train_epoch(self, train_loader, net, criterion, optimizer, device, epoch):
+    def _train_epoch(self, train_loader, net, criterion, optimizer, device, epoch) -> float:
         net.train()
         running_loss = 0.0
         num_batches = 0
@@ -1098,7 +1097,7 @@ class ModelManager:
         avg_loss = running_loss / num_batches if num_batches > 0 else 0.0
         return avg_loss
 
-    def _validate_epoch(self, val_loader, net, criterion, device):
+    def _validate_epoch(self, val_loader, net, criterion, device) -> float:
         net.eval()
         running_loss = 0.0
         num_batches = 0
