@@ -39,9 +39,6 @@ from vendor.pytorch_ssd.vision.ssd.data_preprocessing import TrainAugmentation, 
 from vendor.pytorch_ssd.vision.ssd.ssd import MatchPrior
 from vendor.pytorch_ssd.vision.nn.multibox_loss import MultiboxLoss
 
-train_transform = TrainAugmentation(300, [123,117,104], [1,1,1])
-test_transform = TestTransform(300, [123,117,104], [1,1,1])
-
 class ModelManager:
 
 #region Constructor
@@ -948,31 +945,25 @@ class ModelManager:
             await websocket.send(json.dumps(-1))
             return
 
+        train_transform = TrainAugmentation(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)
+        target_transform = MatchPrior(mobilenetv1_ssd_config.priors, mobilenetv1_ssd_config.center_variance,  mobilenetv1_ssd_config.size_variance, 0.5)
+        test_transform = TestTransform(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)    
+
         # **Load the converted dataset for training**
         if dataset_type == "voc":
             print("[INFO] Loading datasets for training and validation...")
-            train_dataset = VOCDataset(dataset_path, transform=train_transform, target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
-                                            mobilenetv1_ssd_config.center_variance,
-                                            mobilenetv1_ssd_config.size_variance, 0.5))
+            train_dataset = VOCDataset(dataset_path, transform=train_transform, 
+                                       target_transform=target_transform)
             val_dataset = VOCDataset(dataset_path, transform=test_transform, 
-                                    target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
-                                            mobilenetv1_ssd_config.center_variance,
-                                            mobilenetv1_ssd_config.size_variance, 0.5),
-                                    is_test=True)
+                                     target_transform=target_transform, is_test=True)
             config = vgg_ssd_config
 
         elif dataset_type == "open_images":
             print("[INFO] Loading datasets for training and validation...")
             train_dataset = OpenImagesDataset(dataset_path, transform=train_transform, 
-                                                target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
-                                                mobilenetv1_ssd_config.center_variance,
-                                                mobilenetv1_ssd_config.size_variance, 0.5),
-                                                dataset_type="train")
-            val_dataset = OpenImagesDataset(dataset_path, transform=test_transform, 
-                                                target_transform=MatchPrior(mobilenetv1_ssd_config.priors,
-                                                mobilenetv1_ssd_config.center_variance,
-                                                mobilenetv1_ssd_config.size_variance, 0.5),
-                                                dataset_type="test")
+                                              target_transform=target_transform, dataset_type="train")
+            val_dataset = OpenImagesDataset(dataset_path, transform=test_transform, target_transform=target_transform, 
+                                            dataset_type="test")
             config = mobilenetv1_ssd_config
 
         print(f"[INFO] Loaded Dataset with: {len(train_dataset)} train images and, {len(val_dataset)} for validation")
