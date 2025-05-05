@@ -10,11 +10,14 @@ import importlib
 import websockets
 import numpy as np
 import pandas as pd
+from PIL import Image
+from io import BytesIO
 from pathlib import Path
 from typing import Dict, Any
 from pycocotools.coco import COCO
 import xml.etree.ElementTree as ET
 from models.base_model import BaseModel
+
 
 # Dynamically added the submodule path
 sys.path.append(os.path.abspath("vendor/pytorch_ssd"))
@@ -137,6 +140,7 @@ class ModelManager:
         """
 
         voc_path = os.path.join(dataset_path, "VOC")
+        dataset_images_dir_path = os.path.join(dataset_path, "images")
         annotations_path = os.path.join(voc_path, "Annotations")
         images_path = os.path.join(voc_path, "JPEGImages")
         image_sets_path = os.path.join(voc_path, "ImageSets", "Main")
@@ -169,7 +173,7 @@ class ModelManager:
         for img_id in image_ids:
             img_info = coco.imgs[img_id]
             img_filename = img_info["file_name"]
-            img_path = os.path.join(dataset_path, img_filename)
+            img_path = os.path.join(dataset_images_dir_path, img_filename)
 
             # Copy image to VOC format directory
             shutil.copy(img_path, os.path.join(images_path, img_filename))
@@ -234,6 +238,7 @@ class ModelManager:
         Convert a COCO dataset into a simplified Open Images–style directory + CSV.
         """
 
+        dataset_images_dir_path = os.path.join(dataset_path, "images")
         openimages_path = os.path.join(dataset_path, "OpenImages")
         os.makedirs(openimages_path, exist_ok=True)
 
@@ -263,7 +268,7 @@ class ModelManager:
         for img_id in image_ids:
             img_info = coco.imgs[img_id]
             filename = os.path.basename(img_info["file_name"])
-            original_img_path = os.path.join(dataset_path, filename)
+            original_img_path = os.path.join(dataset_images_dir_path, filename)
             if not os.path.exists(original_img_path):
                 print(f"[WARN] Image {filename} not found. Skipping.")
                 continue
@@ -332,7 +337,7 @@ class ModelManager:
         try:
 
             #Set the host ip
-            host = "192.168.1.25"
+            host = "0.0.0.0"
             port = 5000
 
             # Start the WebSocket server
@@ -402,7 +407,7 @@ class ModelManager:
                 elif command == "/models/running/info":
                     await self.get_running_info(websocket)
                 elif command == "/dataset":
-                    await self.prepare_dataset(websocket, data)
+                    await self.prepare_dataset_one_at_a_time(websocket, data)
                 elif command == "/retrain":
                     await self.retrain_model(websocket, data)
                 else:
@@ -757,6 +762,8 @@ class ModelManager:
 
                     if dataset and class_label:
                         tmp_dir = Path(__file__).resolve().parent.parent / "datasets" / dataset_name
+                        tmp_images_dir = tmp_dir/ "images"
+                        tmp_images_dir.mkdir(parents=True, exist_ok=True)
                         tmp_dir.mkdir(parents=True, exist_ok=True)  # Create a temporal folder in the project folder if not exists
 
                         # Initialize COCO dataset structure
@@ -787,7 +794,7 @@ class ModelManager:
                             img_height, img_width = img.shape[:2]
 
                             # Save the image in the dataset folder
-                            img_path = tmp_dir / f"img_{img_id}.jpg"
+                            img_path = tmp_images_dir / f"img_{img_id}.jpg"
                             with open(img_path, "wb") as img_file:
                                 img_file.write(img_data)
 
@@ -853,7 +860,152 @@ class ModelManager:
             print(f"[ERROR] {str(e)}")
             response = -1
             await websocket.send(json.dumps(response)) 
-    
+
+    #command to create a dataset with images at a time
+    async def prepare_dataset_one_at_a_time(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
+        """
+        Incrementally build a dataset in COCO format by adding one image and its annotations at a time.
+
+        This function creates or appends to a dataset JSON file and corresponding image directory, saving
+        individual images and their bounding box annotations. It is designed for scenarios where data is
+        sent gradually.
+
+        Required JSON keys:
+        - "command": "/dataset" indicates dataset creation.
+        - "model_name": The name of the model that will use this dataset (e.g., "detectnet").
+        - "dataset_name": The name of the dataset to create or update.
+        - "class_label": The class label for the current image (e.g., "person").
+        - "dataset": A dictionary containing:
+            - "image": The base64-encoded image string.
+            - "BB": A list of bounding boxes in normalized format:
+                {
+                    "x_min": float,
+                    "y_min": float,
+                    "x_max": float,
+                    "y_max": float
+                }
+
+        JSON Example:
+        {
+            "command": "/dataset",
+            "model_name": "detectnet",
+            "dataset_name": "New_dataset",
+            "class_label": "person",
+            "dataset": {
+                "image": "<base64_encoded_image>",
+                "BB": [
+                    {"x_min": 0.1, "y_min": 0.1, "x_max": 0.5, "y_max": 0.5},
+                    {"x_min": 0.2, "y_min": 0.3, "x_max": 0.6, "y_max": 0.7}
+                ]
+            }
+        }
+
+        Returns:
+        - Sends 1 on success via WebSocket.
+        - Sends 0 if required fields are missing.
+        - Sends -1 if an error occurs or the model does not exist.
+        """
+
+        try:
+
+            if "model_name" not in data or "dataset_name" not in data or "class_label" not in data or "dataset" not in data:
+                print("[ERROR] Required keys are missing in the JSON payload.")
+                await websocket.send(json.dumps(0)) 
+                return            
+
+            response = 0
+            model_name = data["model_name"].lower()
+            dataset_name = data["dataset_name"]
+            class_label = data["class_label"]
+            dataset_info = data["dataset"]
+            image_data = dataset_info["image"]
+            bboxes = dataset_info["BB"]
+
+            models_dir = Path(__file__).resolve().parent.parent / "models"
+            model_exists = any(model_name == file.stem.lower() for file in models_dir.glob("*.py"))
+
+            if not model_exists:
+                print(f"[ERROR] Model '{model_name}' not found.")
+                await websocket.send(json.dumps(-1)) 
+                return
+
+            dataset_path = Path("datasets") / dataset_name
+            images_dir = dataset_path / "images"
+            dataset_file = dataset_path / dataset_name + ".json"
+
+            images_dir.mkdir(parents=True, exist_ok=True)
+
+            # Load or initialize annotations.json
+            if dataset_file.exists():
+                with open(dataset_file, 'r') as f:
+                    annotations = json.load(f)
+            else:
+                annotations = {
+                    "images": [],
+                    "annotations": [],
+                    "categories": []
+                }
+
+            # Handle categories
+            existing_category = next((cat for cat in annotations["categories"] if cat["name"] == class_label), None)
+            if existing_category:
+                category_id = existing_category["id"]
+            else:
+                category_id = max([cat["id"] for cat in annotations["categories"]], default=0) + 1
+                annotations["categories"].append({
+                    "id": category_id,
+                    "name": class_label
+                })
+
+            # Generate new image ID
+            image_id = max([img["id"] for img in annotations["images"]], default=0) + 1
+            file_name = f"img_{image_id}.jpg"
+            image_path = images_dir / file_name
+
+            # Decode and save the image
+            img = Image.open(BytesIO(base64.b64decode(image_data)))
+            img.save(image_path)
+            width, height = img.size
+
+            annotations["images"].append({
+                "id": image_id,
+                "file_name": file_name,
+                "width": width,
+                "height": height
+            })
+
+            # Add bounding boxes
+            next_ann_id = max([ann["id"] for ann in annotations["annotations"]], default=0) + 1
+            for bbox in bboxes:
+                x_min = bbox["x_min"] * width
+                y_min = bbox["y_min"] * height
+                x_max = bbox["x_max"] * width
+                y_max = bbox["y_max"] * height
+                bbox_width = x_max - x_min
+                bbox_height = y_max - y_min
+                area = bbox_width * bbox_height
+
+                annotations["annotations"].append({
+                    "id": next_ann_id,
+                    "image_id": image_id,
+                    "category_id": category_id,
+                    "bbox": [x_min, y_min, bbox_width, bbox_height],
+                    "area": area,
+                    "iscrowd": 0
+                })
+                next_ann_id += 1
+
+            # Save updated annotations
+            with open(dataset_file, 'w') as f:
+                json.dump(annotations, f, indent=4)
+
+            print(f"status: success image_id: {image_id}")
+            await websocket.send(json.dumps(1))
+   
+        except Exception as e:
+            print(f"[ERROR] {str(e)}")
+            await websocket.send(json.dumps(-1))        
+
     #command to retrain a model
     async def retrain_model(self, websocket: websockets.WebSocketServerProtocol, data: dict) -> None:
         """
