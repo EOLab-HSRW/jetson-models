@@ -27,7 +27,10 @@ class segnet(BaseModel):
     @property
     def filter_mode(self):
         return self.__filter_mode
-
+    
+    @property
+    def is_custom(self):
+        return self.__is_custom
 #endregion
 
 #region Methods
@@ -35,12 +38,13 @@ class segnet(BaseModel):
     def launch(self, data):
         try:
 
-            self.__model_name = data.get('model')
+            self.__model_name = data.get('model_name')
             self.__variant = data.get('variant', 'fcn-resnet18-voc')
             self.__filter_mode = data.get('filter_mode', 'linear')
             self.__alpha = data.get('alpha', 150.0)
             self.__ignore_class = data.get('ignore_class', 'void')
             self.__visualize = data.get('visualize', 'overlay,mask')
+            self.__is_custom = False
             self.__segnet = jetson_inference.segNet(self.__variant)
             self.__segnet.SetOverlayAlpha(self.__alpha)
             return True

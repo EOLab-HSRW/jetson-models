@@ -20,17 +20,21 @@ class posenet(BaseModel):
     @property
     def variant(self):
         return self.__variant
-
+    
+    @property
+    def is_custom(self):
+        return self.__is_custom
 #endregion
 
 #region Methods
 
     def launch(self, data):
         try:
-            self.__model_name = data["model"]
+            self.__model_name = data["model_name"]
             self.__variant = data.get("variant", "resnet18-body")
             self.__overlay = data.get("overlay", "none") 
             self.__threshold = data.get("threshold", 0.15)
+            self.__is_custom = False
             self.__net = jetson_inference.poseNet(self.variant, threshold=self.__threshold)
             return True
         except Exception as e:

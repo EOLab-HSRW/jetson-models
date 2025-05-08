@@ -23,6 +23,9 @@ class imagenet(BaseModel):
     def variant(self):
         return self.__variant
 
+    @property
+    def is_custom(self):
+        return self.__is_custom
 #endregion
 
 #region Methods
@@ -30,9 +33,10 @@ class imagenet(BaseModel):
     def launch(self, data):
 
         try:
-            self.__model_name = data.get('model')
+            self.__model_name = data.get('model_name')
             self.__variant = data.get('variant', "googlenet")
             self.__topK = data.get('topK', 1)
+            self.__is_custom = False
             self.__imagenet = jetson_inference.imageNet(self.__variant)
             return True
 
