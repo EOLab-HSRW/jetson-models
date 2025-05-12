@@ -70,8 +70,8 @@ class detectnet(BaseModel):
                 self.__detectnet = jetson_inference.detectNet(
                     model=onnx_path,
                     labels=labels_path,
-                    input_blob="input",
-                    output_cvg="confidences",
+                    input_blob="input_0",
+                    output_cvg="scores",
                     output_bbox="boxes",
                     threshold=self.__threshold
                 )
