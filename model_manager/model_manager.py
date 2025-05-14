@@ -994,7 +994,7 @@ class ModelManager:
             print(f"[ERROR] {str(e)}")
             await websocket.send(json.dumps(-1))        
 
-    #command to retrain a model
+    #command to train a model
     async def train_model(self, websocket: websockets.WebSocketServerProtocol, data: dict) -> None:
         """
         Retrain a model using a prepared dataset.  
@@ -1002,19 +1002,33 @@ class ModelManager:
         Required JSON keys:
         - "command": "/retrain" indicate the action to retrain an available model.
         - "model_name": Name of the model to retrain (e.g., "detectnet")
-        - "dataset_name": Name of the dataset folder (e.g., "New_dataset")
-        - "varitan_name": Name of the network architecture (e.g "mb2-ssd-lite")
-        - "new_variant_name": New variant to use (e.g., "Fruits")
+        - "dataset_type": Specify dataset type. Currently supports voc and open_images.
+        - "dataset_name": Name of the dataset folder (e.g., "Fruits_dataset")
+        - "new_variant_name": New variant to use (e.g., "Fruits_SSD")
         
         Optional keys (with defaults):
-        - "retrain_mode": "new" or "extend"
-        - "dataset_type": "open_images" (or "voc")
-        - "epochs": 30
-        - "batch_size": 1
-        - "workers": 0
-        - "learning_rate": 0.01
+        - "retrain_mode": "new" or "extend" (Not yet implemented)
+        - "epochs": 30, Description: The number epochs
+        - "batch_size": 1, Description: Batch size for training
+        - "learning_rate": 0.01, Description: Initial learning rate 
+        - "workers": 4, Description: Number of workers used in dataloading
+        - "net": "mb1-ssd", Description: The network architecture, it can be mb1-ssd, mb1-ssd-lite, mb2-ssd-lite or vgg16-ssd.
+        - "resolution": 300, Description: the NxN pixel resolution of the model (can be changed for mb1-ssd only)
+        - "momentum": 0.9, Description: Momentum value for optim
+        - "weight_decay": 5e-4, Description: Weight decay for SGD
+        - "gama": 0.1, Description: Gamma update for SGD
+        - "base_net_lr": 0.001, Description: Initial learning rate for base net, or None to use --lr
+        - "extra_layers_lr": "None", Description: Initial learning rate for the layers not in base net and prediction heads
+        - "scheduler": "cosine", Description: Scheduler for SGD. It can one of multi-step and cosine
+        - "milestones": "80,100", Description: Milestones for MultiStepLR
+        - "t_max": 100, Description: T_max value for Cosine Annealing Scheduler
+        - "validation_epochs": 1, Description: The number epochs between running validation
+        - "debug_steps": 10, Description: Set the debug log output frequency
+        - "use_cuda": True, Description: Use CUDA to train model
+        - "log_level": 'info', Description: Logging level, one of:  debug, info, warning, error, critical (default: info)
+
         If any required key is missing, returns -1.
-        On success, returns the variant_name.
+        On success, returns the new_variant_name.
         """
 
         base_directory = "/usr/local/bin/networks"
@@ -1022,7 +1036,7 @@ class ModelManager:
         print("[INFO] Beginning retraining...")
 
         # Validate required parameters
-        for key in ["model_name", "dataset_name", "variant_name", "new_variant_name"]:
+        for key in ["dataset_type", "model_name", "dataset_name", "new_variant_name"]:
             if key not in data:
                 print("[ERROR] Any required field is missing")
                 await websocket.send(json.dumps(-1))
@@ -1030,34 +1044,37 @@ class ModelManager:
 
         model_name = data["model_name"].lower()
         dataset_name = data["dataset_name"]
-        variant_name = data["variant_name"]
         new_variant_name = data["new_variant_name"]
+        base_new_model_directory = os.path.join(base_directory, new_variant_name)
+
+        command_train = [
+            "python3", "vendor/pytorch_ssd/train_ssd.py",
+            "--model-dir", base_new_model_directory
+        ]
 
         # Optional training hyperparameters
         if "dataset_type" in data:
             dataset_type = data["dataset_type"]
-        else:
-            dataset_type = "open_images"
+            command_train += ["--dataset-type", dataset_type]
 
-        if "epochs" in data:
-            epochs = int(data["epochs"])
-        else:
-            epochs = 30
-
-        if "batch_size" in data:
-            batch_size = data["batch_size"]
-        else:
-            batch_size = 1
-
-        if "learning_rate" in data:
-            learning_rate = float(data["learning_rate"])
-        else:
-            learning_rate = 0.01
-
-        if "workers" in data:
-            workers = data["workers"]
-        else:
-            workers =  0
+        if "epochs" in data: command_train += ["--epochs", str(data["epochs"])]
+        if "batch_size" in data: command_train += ["--batch-size", str(data["batch_size"])]
+        if "learning_rate" in data: command_train += ["--learning-rate", str(data["learning_rate"])]            
+        if "workers" in data: command_train += ["--workers", str(data["workers"])]
+        if "net" in data: command_train += ["--net", data["net"]]
+        if "resolution" in data: command_train += ["--resolution", str(data["resolution"])]
+        if "momentum" in data: command_train += ["--momentum", str(data["momentum"])]
+        if "weight_decay" in data: command_train += ["--weight-decay", str(data["weight_decay"])]
+        if "gamma" in data: command_train += ["--gamma", str(data["gamma"])]
+        if "base_net_lr" in data: command_train += ["--base-net-lr", str(data["base_net_lr"])]
+        if "extra_layers_lr" in data: command_train += ["--extra-layers-lr", str(data["extra_layers_lr"])]
+        if "scheduler" in data: command_train += ["--scheduler", str(data["scheduler"])]
+        if "milestones" in data: command_train += ["--milestones", data["milestones"]]
+        if "t_max" in data: command_train += ["--t-max", str(data["t_max"])]
+        if "validation_epochs" in data: command_train += ["--validation-epochs", str(data["validation_epochs"])]
+        if "debug_steps" in data: command_train += ["--debug-steps", str(data["debug_steps"])]
+        if "use_cuda" in data: command_train += ["--use-cuda", str(data["use_cuda"])]
+        if "log_level" in data: command_train += ["--log-level", data["log_level"]]
 
         #Verify if there is already a model with the same name as the new variant
         if os.path.exists(os.path.join(base_directory, new_variant_name)):
@@ -1115,15 +1132,7 @@ class ModelManager:
         num_classes = len(train_dataset.class_names)
         print(f"[INFO] Detected classes amount: {num_classes}")
 
-        command_train = [
-            "python3", "vendor/pytorch_ssd/train_ssd.py",
-            "--dataset-type", dataset_type,
-            "--data", dataset_path,
-            "--model-dir", os.path.join(base_directory, new_variant_name),
-            "--workers", str(workers),
-            "--batch-size", str(batch_size),
-            "--epochs", str(epochs)
-        ]
+        command_train += ["--datasets", dataset_path]
 
         try:
             print("[INFO] Launching training subprocess...")
@@ -1137,14 +1146,14 @@ class ModelManager:
             await websocket.send(json.dumps(-1))
             return
 
-        command = [
+        command_export = [
             "python3", "vendor/pytorch_ssd/onnx_export.py",
-            "--model-dir", os.path.join(base_directory, new_variant_name),
+            "--model-dir", base_new_model_directory
         ]
 
         try:
             print("[INFO] Exporting model subprocess...")
-            result = subprocess.run(command)
+            result = subprocess.run(command_export)
 
             print("[INFO] Exportation complete.")
 
