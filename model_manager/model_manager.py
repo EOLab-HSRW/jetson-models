@@ -397,7 +397,9 @@ class ModelManager:
                 elif command == "/dataset":
                     await self.prepare_dataset_one_at_a_time(websocket, data)
                 elif command == "/retrain":
-                    await self.train_model(websocket, data)
+                    await self.retrain_model(websocket, data)
+                elif command == "/models/result":
+                    await self.get_best_checkpoint(websocket, data)
                 else:
                     print("[ERROR] Invalid action")
                     await websocket.send(json.dumps(-1))
@@ -995,7 +997,7 @@ class ModelManager:
             await websocket.send(json.dumps(-1))        
 
     #command to train a model
-    async def train_model(self, websocket: websockets.WebSocketServerProtocol, data: dict) -> None:
+    async def retrain_model(self, websocket: websockets.WebSocketServerProtocol, data: dict) -> None:
         """
         Retrain a model using a prepared dataset.  
         
@@ -1007,7 +1009,6 @@ class ModelManager:
         - "new_variant_name": New variant to use (e.g., "Fruits_SSD")
         
         Optional keys (with defaults):
-        - "retrain_mode": "new" or "extend" (Not yet implemented)
         - "epochs": 30, Description: The number epochs
         - "batch_size": 1, Description: Batch size for training
         - "learning_rate": 0.01, Description: Initial learning rate 
@@ -1026,6 +1027,7 @@ class ModelManager:
         - "debug_steps": 10, Description: Set the debug log output frequency
         - "use_cuda": True, Description: Use CUDA to train model
         - "log_level": 'info', Description: Logging level, one of:  debug, info, warning, error, critical (default: info)
+        - "pretrained_ssd": DEFAULT_PRETRAINED_MODEL, Description: Pre-trained base model
 
         If any required key is missing, returns -1.
         On success, returns the new_variant_name.
@@ -1075,6 +1077,7 @@ class ModelManager:
         if "debug_steps" in data: command_train += ["--debug-steps", str(data["debug_steps"])]
         if "use_cuda" in data: command_train += ["--use-cuda", str(data["use_cuda"])]
         if "log_level" in data: command_train += ["--log-level", data["log_level"]]
+        if "pretrained_ssd" in data: command_train += ["--pretrained-ssd", data["pretrained_ssd"]]
 
         #Verify if there is already a model with the same name as the new variant
         if os.path.exists(os.path.join(base_directory, new_variant_name)):
@@ -1136,13 +1139,28 @@ class ModelManager:
 
         try:
             print("[INFO] Launching training subprocess...")
-            result = subprocess.run(command_train)
+            process = subprocess.Popen(
+                command_train,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+
+            for line in process.stdout:
+                print("[TRAIN]", line.strip())
+
+            process.wait()
+
+            if process.returncode != 0:
+                print(f"[ERROR] Training failed with exit code {process.returncode}")
+                await websocket.send(json.dumps(-1))
+                return
 
             print("[INFO] Training complete.")
-            print(f"[INFO] Result: {result.stdout}")
 
-        except subprocess.CalledProcessError as e:
-            print(f"[ERROR] Training failed. {str(e)}")
+        except Exception as e:
+            print(f"[ERROR] Unhandled training error: {str(e)}")
             await websocket.send(json.dumps(-1))
             return
 
@@ -1153,13 +1171,28 @@ class ModelManager:
 
         try:
             print("[INFO] Exporting model subprocess...")
-            result = subprocess.run(command_export)
+            process = subprocess.Popen(
+                command_export,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+
+            for line in process.stdout:
+                print("[EXPORT]", line.strip())
+
+            process.wait()
+
+            if process.returncode != 0:
+                print(f"[ERROR] Export failed with exit code {process.returncode}")
+                await websocket.send(json.dumps(-1))
+                return
 
             print("[INFO] Exportation complete.")
 
-        except subprocess.CalledProcessError as e:
-            print("[ERROR] Exportation failed.")
-            print(e.stderr)
+        except Exception as e:
+            print(f"[ERROR] Unhandled export error: {str(e)}")
             await websocket.send(json.dumps(-1))
             return
 
@@ -1177,6 +1210,55 @@ class ModelManager:
 
         await websocket.send(json.dumps(new_variant_name))
         print("[INFO] Training is done!")
+
+    #command to get the lowest loss trained
+    async def get_best_checkpoint(self, websocket: websockets.WebSocketServerProtocol, data: dict) -> None:
+        """
+        Return the checkpoint file with the lowest loss for a given model variant name.
+
+        Required JSON keys:
+        - "variant_name": The name of the trained model variant.
+
+        If found, returns the absolute path of the checkpoint with the lowest loss.
+        If not found or an error occurs, returns -1.
+        """
+
+        # Validate required parameter
+        if "variant_name" not in data:
+            print("[ERROR] Any required field is missing")
+            await websocket.send(json.dumps(-1))
+            return
+
+        base_directory = "/usr/local/bin/networks"        
+        variant_name = data["variant_name"]
+        base_model_directory = os.path.join(base_directory, variant_name)
+
+        best_loss = float('inf')
+        best_checkpoint = None
+
+        for file in os.listdir(base_model_directory):
+            if not file.endswith(".pth"):
+                continue
+
+            try:
+                # Extract the loss value from the filename
+                loss_str = file[file.rfind("-")+1 : -4]  # between last "-" and ".pth"
+                loss = float(loss_str)
+
+                if loss < best_loss:
+                    best_loss = loss
+                    best_checkpoint = os.path.join(base_model_directory, file)
+
+            except ValueError:
+                # Skip files that don't follow the expected naming pattern
+                continue
+
+        if best_checkpoint is None:
+            await websocket.send(json.dumps(-1))
+            raise FileNotFoundError(f"No valid checkpoint with loss found in '{base_model_directory}'")
+
+        print(f"[INFO] The path for the lowest loss checkpoint for model {variant_name} is: {best_checkpoint}")
+        await websocket.send(json.dumps(best_checkpoint))
 
 #endregion  
 #endregion
