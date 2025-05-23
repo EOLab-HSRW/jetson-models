@@ -3,9 +3,11 @@ import cv2
 import sys
 import json
 import gzip
+import time
 import shutil
 import random
 import base64
+import argparse
 import importlib
 import websockets
 import subprocess
@@ -15,6 +17,7 @@ from PIL import Image
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, Any
+from datetime import datetime
 from pycocotools.coco import COCO
 import xml.etree.ElementTree as ET
 from models.base_model import BaseModel
@@ -318,10 +321,14 @@ class ModelManager:
 #region WebSocket Methods
 
     #WebSocket Inizialization
-    async def start_server(self) -> None:
+    async def start_server(self, args: argparse.Namespace) -> None:
         """Start the WebSocket server"""
 
-        print("[INFO] WebSocket server is starting...")
+        if args.debug:
+            print("[INFO] WebSocket server is starting in debug mode...")
+        else:
+            print("[INFO] WebSocket server is starting...")
+
         try:
 
             #Set the host ip
@@ -329,7 +336,11 @@ class ModelManager:
             port = 5000
 
             # Start the WebSocket server
-            self.server = await websockets.serve(self.handle_client, host , port)
+            self.server = await websockets.serve(
+                lambda ws, path: self.handle_client(ws, path, args),
+                host,
+                port
+            )
             print(f"[INFO] Server running on ws://{host}:{port}")    
             await self.server.wait_closed()
             
@@ -339,7 +350,7 @@ class ModelManager:
             print("[INFO] Server shutdown.")
 
     #Handle actions with the client
-    async def handle_client(self, websocket: websockets.WebSocketServerProtocol, path: str) -> None:
+    async def handle_client(self, websocket: websockets.WebSocketServerProtocol, path: str, args: argparse.Namespace) -> None:
         """Handle incoming client messages"""
 
         try:
@@ -385,7 +396,7 @@ class ModelManager:
                 if command == "/models":
                     await self.get_models(websocket)
                 elif command == "/models/launch":
-                    await self.launch(websocket, data)
+                    await self.launch(websocket, data, args)
                 elif command == "/models/run":
                     await self.run(websocket, data)
                 elif command == "/models/stop":
@@ -412,7 +423,7 @@ class ModelManager:
             await websocket.send(json.dumps(-1))
 
     #command to launch the model
-    async def launch(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
+    async def launch(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any], args: argparse.Namespace) -> None:
         """
         Launch a model
         
@@ -428,6 +439,13 @@ class ModelManager:
         If any required key is missing, returns -1. 
         On success, returns the launched model.
         """
+        
+        start_time = time.time()
+        start_dt = datetime.now()
+        execution_success  = 0
+        outcome_code  = -1
+        variant_name = ""
+        response = -1
 
         try:
 
@@ -435,6 +453,7 @@ class ModelManager:
 
             if model_name == "base_model": 
                 print("[WARN] base_model is not supported")
+                outcome_code = 0
                 response = 0
             else:
                     
@@ -449,22 +468,56 @@ class ModelManager:
                 if success:
                     model_id = self.set_model_id()
                     self.running_models[model_id] = model_instance
+                    variant_name = model_instance.variant
+                    execution_success = 1
+                    outcome_code = 1
                     response = model_id
                     print(f"[INFO] Model: {model_name} launched successfully with the model_id: {model_id}")
                 else:
+                    outcome_code = -1
                     response = -1
             
         except (ModuleNotFoundError, AttributeError):
             print(f"[ERROR] Model {model_name} is not supported or failed to load.")
             response = -1
+            outcome_code = -1
             await websocket.send(json.dumps(response))
             return         
 
         except Exception as e:
             print(f"[ERROR] {str(e)}")
             response = -1
+            outcome_code = -1
             await websocket.send(json.dumps(response))
             return
+        finally:
+            if args.debug:
+                end_time = time.time()
+                end_dt = datetime.now()
+                duration_seconds = round(end_time - start_time, 3)
+
+                log_data = {
+                    "Command": data["command"],
+                    "Model_Name": model_name,
+                    "Variant_Name": variant_name,
+                    "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "Duration_Seconds": duration_seconds,
+                    "Execution_Success": execution_success,
+                    "Outcome_Code": outcome_code,
+                }
+
+                log_file = "log.xlsx"
+                try:
+                    if os.path.exists(log_file):
+                        df = pd.read_excel(log_file, engine='openpyxl')
+                        df = pd.concat([df, pd.DataFrame([log_data])], ignore_index=True)
+                    else:
+                        df = pd.DataFrame([log_data])
+                    df.to_excel(log_file, index=False)
+                    print(f"[DEBUG] Log updated: {log_data}")
+                except Exception as log_err:
+                    print(f"[ERROR] Failed to write log: {log_err}")
 
         await websocket.send(json.dumps(response))  
 
