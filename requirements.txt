@@ -6,9 +6,7 @@ pycocotools
 lxml  
 
 #Pytorch-ssd dependencies
-xlrd
 boto3
 pandas
 urllib3
-openpyxl
 tensorboard
