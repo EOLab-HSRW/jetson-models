@@ -419,23 +419,23 @@ class ModelManager:
                 print(f"[INFO] Message received from client {websocket.remote_address}: " "with the command: " f"{command}")
 
                 if command == "/models":
-                    await self.get_models(websocket)
+                    await self.get_models(websocket, data, args)
                 elif command == "/models/launch":
                     await self.launch(websocket, data, args)
                 elif command == "/models/run":
                     await self.run(websocket, data, args)
                 elif command == "/models/stop":
-                    await self.stop(websocket, data)
+                    await self.stop(websocket, data, args)
                 elif command == "/models/running":
-                    await self.get_running(websocket)
+                    await self.get_running(websocket, data, args)
                 elif command == "/models/running/info":
-                    await self.get_running_info(websocket)
+                    await self.get_running_info(websocket, data, args)
                 elif command == "/dataset":
-                    await self.prepare_dataset_one_at_a_time(websocket, data)
+                    await self.prepare_dataset_one_at_a_time(websocket, data, args)
                 elif command == "/retrain":
-                    await self.retrain_model(websocket, data)
+                    await self.retrain_model(websocket, data, args)
                 elif command == "/models/result":
-                    await self.get_best_checkpoint(websocket, data)
+                    await self.get_best_checkpoint(websocket, data, args)
                 else:
                     print("[ERROR] Invalid action")
                     await websocket.send(json.dumps(-1))
@@ -503,6 +503,8 @@ class ModelManager:
                     outcome_code = -1
                     response = -1
             
+            await websocket.send(json.dumps(response))
+            
         except (ModuleNotFoundError, AttributeError):
             print(f"[ERROR] Model {model_name} is not supported or failed to load.")
             response = -1
@@ -536,9 +538,7 @@ class ModelManager:
                 try:
                     await self.log_queue.put(log_data)
                 except Exception as log_err:
-                    print(f"[ERROR] Failed to enqueue log: {log_err}")
-
-        await websocket.send(json.dumps(response))  
+                    print(f"[ERROR] Failed to enqueue log: {log_err}")  
 
     #command to manage all the frames when a model is running
     async def run(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any], args: argparse.Namespace) -> None:
@@ -584,6 +584,8 @@ class ModelManager:
                     outcome_code = 0
                     response = 0
 
+            await websocket.send(json.dumps(response))
+
         except Exception as e:
             execution_success = 0
             outcome_code = -1
@@ -622,10 +624,8 @@ class ModelManager:
                 except Exception as log_err:
                     print(f"[ERROR] Failed to enqueue log: {log_err}")
 
-        await websocket.send(json.dumps(response))  
-
     #command to stop the current model
-    async def stop(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
+    async def stop(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any], args: argparse.Namespace) -> None:
         """
         Stop a running model.
         
@@ -637,68 +637,120 @@ class ModelManager:
         On success, returns ID or IDs of the stopped models.
         
         """
+
+        start_time = time.time()
+        start_dt = datetime.now()
+        execution_success  = 0
+        outcome_code  = -1
+        response = -1
+        stopped_models = []
+        stopped_models_names = []
+        stopped_variants = []
         
         try:
 
             if len(self.running_models) == 0: 
                 print("[WARN] No model is running...")
+                execution_success = 0
+                outcome_code = 0
                 response = 0
             else:
 
                 model_id = data['model_id']
 
                 if isinstance(model_id, str) and model_id.lower() == "all":
-                    stopped_models = []
                     for id in self.running_models:
                         stopped_models.append(id)
+                        stopped_models_names.append(self.running_models[id].model_name)
+                        stopped_variants.append(self.running_models[id].variant)
                         self.running_models[id].stop()
                     self.running_models.clear()
                     print("[INFO] All the models have been stopped successfully")
+                    execution_success = 1
+                    outcome_code = 1
                     response = stopped_models
 
                 elif isinstance(model_id, int):
                     model_id = int(model_id)
                     if model_id in self.running_models:
                         model_name = self.running_models[model_id].model_name
+                        execution_success = 1
+                        outcome_code = 1
                         response = model_id
+                        stopped_models_names.append(self.running_models[model_id].model_name)
+                        stopped_variants.append(self.running_models[model_id].variant)
+                        stopped_models.append(model_id)
                         self.running_models[model_id].stop()
                         del self.running_models[model_id]
                         print(f"[INFO] Model: {model_name} with the model_id: {model_id} has been stopped successfully")
                     else:
                         print(f"[WARN] There is no model with the model_id: {model_id}")
+                        execution_success = 0
+                        outcome_code = 0
                         response = 0
 
                 elif isinstance(model_id, list):
-
-                    stopped_models = []
 
                     for id in model_id:
                         model_id = int(id)
 
                         if model_id in self.running_models:
                             model_name = self.running_models[model_id].model_name
+                            variant_name = self.running_models[model_id].variant
                             stopped_models.append(model_id)
+                            stopped_models_names.append(model_name)
+                            stopped_variants.append(variant_name)
                             self.running_models[model_id].stop()
                             del self.running_models[model_id]
+                            execution_success = 1
+                            outcome_code = 1
                             response = stopped_models
-                            print(f"[INFO] Model: {model_name} with the model_id {model_id} has been stopped successfully")
+                            print(f"[INFO] Model: {model_name} with variant {variant_name} and with the model_id {model_id} has been stopped successfully")
 
                         else:
+                            execution_success = 0
+                            outcome_code = 0
                             response = 0
                             print(f"[WARN] There is no model with the model_id: {model_id}")
 
                 else:
                     print(f"[ERROR] Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list.")
-                    response = 0
+                    execution_success = 0
+                    outcome_code = -1
+                    response = -1
 
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"[ERROR] {e}")
+            execution_success = 0
+            outcome_code = -1
             response = -1
             await websocket.send(json.dumps(response))
 
+        finally:
+            if args.debug:
+                end_time = time.time()
+                end_dt = datetime.now()
+                duration_seconds = round(end_time - start_time, 3)
+
+                log_data = {
+                    "Command": data["command"],
+                    "Model_Name": str(stopped_models_names),
+                    "Variant_Name": str(stopped_variants),
+                    "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "Duration_Seconds": duration_seconds,
+                    "Execution_Success": execution_success,
+                    "Outcome_Code": outcome_code,
+                }
+
+                try:
+                    await self.log_queue.put(log_data)
+                except Exception as log_err:
+                    print(f"[ERROR] Failed to enqueue log: {log_err}")
+            
     #command to get a model_id list of the current running models
-    async def get_running(self, websocket: websockets.WebSocketServerProtocol) -> None:
+    async def get_running(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any], args: argparse.Namespace) -> None:
         """
         Required JSON keys:
         - "command": "/models/running"
@@ -708,10 +760,17 @@ class ModelManager:
         If there are no running models returns 0.     
         """
 
+        start_time = time.time()
+        start_dt = datetime.now()
+        execution_success  = 0
+        outcome_code  = -1
+
         try:
 
             if  len(self.running_models) == 0:
                 print("[WARN] No model is running...")
+                execution_success  = 0
+                outcome_code  = 0
                 response = 0
             else:
 
@@ -720,22 +779,53 @@ class ModelManager:
                 for id in sorted(self.running_models.keys()):
                     models.append(id)
 
+                execution_success  = 1
+                outcome_code  = 1
                 response = models
 
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"[ERROR] {str(e)}")
+            execution_success  = 0
+            outcome_code  = -1
             response = -1
             await websocket.send(json.dumps(response))
+        finally:
+           if args.debug:
+                end_time = time.time()
+                end_dt = datetime.now()
+                duration_seconds = round(end_time - start_time, 3)
+
+                log_data = {
+                    "Command": data["command"],
+                    "Model_Name": "",
+                    "Variant_Name": "",
+                    "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "Duration_Seconds": duration_seconds,
+                    "Execution_Success": execution_success,
+                    "Outcome_Code": outcome_code,
+                }
+
+                try:
+                    await self.log_queue.put(log_data)
+                except Exception as log_err:
+                    print(f"[ERROR] Failed to enqueue log: {log_err}") 
 
     #command to know about the available models in the manager
-    async def get_models(self, websocket: websockets.WebSocketServerProtocol) -> None:
+    async def get_models(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any], args: argparse.Namespace) -> None:
         """
         Required JSON keys:
         - "command": "/models"
 
         Returns a JSON with information about all available models inside the "/models" list folder.
         """
+
+        start_time = time.time()
+        start_dt = datetime.now()
+        execution_success  = 0
+        outcome_code  = -1
+        response = -1
 
         try:
 
@@ -755,16 +845,41 @@ class ModelManager:
                 # Add info of the model class to the dictionary
                 models_info[model_name] = model_info[model_name]
 
+            execution_success  = 1
+            outcome_code  = 1
             response = {"models": models_info}
 
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"[ERROR] {str(e)}")
+            execution_success  = 0
+            outcome_code  = -1
             response = -1
             await websocket.send(json.dumps(response))
+        finally:
+            if args.debug:
+                end_time = time.time()
+                end_dt = datetime.now()
+                duration_seconds = round(end_time - start_time, 3)
+
+                log_data = {
+                    "Command": data["command"],
+                    "Model_Name": "",
+                    "Variant_Name": "",
+                    "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "Duration_Seconds": duration_seconds,
+                    "Execution_Success": execution_success,
+                    "Outcome_Code": outcome_code,
+                }
+
+                try:
+                    await self.log_queue.put(log_data)
+                except Exception as log_err:
+                    print(f"[ERROR] Failed to enqueue log: {log_err}")
 
     #command to get all the current running models
-    async def get_running_info(self, websocket: websockets.WebSocketServerProtocol) -> None:
+    async def get_running_info(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any], args: argparse.Namespace) -> None:
         """
         Required JSON keys:
         - "command": "/models/running/info"
@@ -772,10 +887,18 @@ class ModelManager:
         Returns a JSON with all the running models information
         """
 
+        start_time = time.time()
+        start_dt = datetime.now()
+        execution_success  = 0
+        outcome_code  = -1
+        response = -1
+
         try:
 
             if  len(self.running_models) == 0:
                 print("[WARN] No model is running...")
+                execution_success  = 0
+                outcome_code  = 0
                 response = 0
             else:
 
@@ -787,13 +910,39 @@ class ModelManager:
                         "variant": self.running_models[id].variant
                     }
 
+                execution_success  = 1
+                outcome_code  = 1
                 response = {"model_id": models}
 
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"[ERROR] {str(e)}")
+            execution_success  = 0
+            outcome_code  = -1
             response = -1
             await websocket.send(json.dumps(response))
+
+        finally:
+            if args.debug:
+                end_time = time.time()
+                end_dt = datetime.now()
+                duration_seconds = round(end_time - start_time, 3)
+
+                log_data = {
+                    "Command": data["command"],
+                    "Model_Name": "",
+                    "Variant_Name": "",
+                    "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "Duration_Seconds": duration_seconds,
+                    "Execution_Success": execution_success,
+                    "Outcome_Code": outcome_code,
+                }
+
+                try:
+                    await self.log_queue.put(log_data)
+                except Exception as log_err:
+                    print(f"[ERROR] Failed to enqueue log: {log_err}") 
 
     #command to prepare the dataset format
     async def prepare_dataset(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
@@ -964,7 +1113,7 @@ class ModelManager:
             await websocket.send(json.dumps(response)) 
 
     #command to create a dataset with images at a time
-    async def prepare_dataset_one_at_a_time(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
+    async def prepare_dataset_one_at_a_time(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any], args: argparse.Namespace) -> None:
         """
         Incrementally build a dataset in COCO format by adding one image and its annotations at a time.
 
@@ -1008,14 +1157,21 @@ class ModelManager:
         - Sends -1 if an error occurs or the model does not exist.
         """
 
+        start_time = time.time()
+        start_dt = datetime.now()
+        execution_success  = 0
+        outcome_code  = -1
+        model_name = ""
+
         try:
 
             if "model_name" not in data or "dataset_name" not in data or "class_label" not in data or "dataset" not in data:
-                print("[ERROR] Required keys are missing in the JSON payload.")
+                print("[WARN] Required keys are missing in the JSON payload.")
+                execution_success  = 0
+                outcome_code  = 0
                 await websocket.send(json.dumps(0)) 
                 return            
 
-            response = 0
             model_name = data["model_name"].lower()
             dataset_name = data["dataset_name"]
             class_label = data["class_label"]
@@ -1028,6 +1184,8 @@ class ModelManager:
 
             if not model_exists:
                 print(f"[ERROR] Model '{model_name}' not found.")
+                execution_success  = 0
+                outcome_code  = -1
                 await websocket.send(json.dumps(-1)) 
                 return
 
@@ -1102,14 +1260,39 @@ class ModelManager:
                 json.dump(annotations, f, indent=4)
 
             print(f"status: success image_id: {image_id}")
+            execution_success  = 1
+            outcome_code  = 1
             await websocket.send(json.dumps(1))
    
         except Exception as e:
             print(f"[ERROR] {str(e)}")
-            await websocket.send(json.dumps(-1))        
+            execution_success  = 0
+            outcome_code  = -1
+            await websocket.send(json.dumps(-1))    
+        finally:
+            if args.debug:
+                end_time = time.time()
+                end_dt = datetime.now()
+                duration_seconds = round(end_time - start_time, 3)
+
+                log_data = {
+                    "Command": data["command"],
+                    "Model_Name": model_name,
+                    "Variant_Name": "",
+                    "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "Duration_Seconds": duration_seconds,
+                    "Execution_Success": execution_success,
+                    "Outcome_Code": outcome_code,
+                }
+
+                try:
+                    await self.log_queue.put(log_data)
+                except Exception as log_err:
+                    print(f"[ERROR] Failed to enqueue log: {log_err}") 
 
     #command to train a model
-    async def retrain_model(self, websocket: websockets.WebSocketServerProtocol, data: dict) -> None:
+    async def retrain_model(self, websocket: websockets.WebSocketServerProtocol, data: dict, args: argparse.Namespace) -> None:
         """
         Retrain a model using a prepared dataset.  
         
@@ -1145,186 +1328,241 @@ class ModelManager:
         On success, returns the new_variant_name.
         """
 
+        start_time = time.time()
+        start_dt = datetime.now()
+        execution_success  = 0
+        outcome_code  = -1
+        model_name = ""
+        new_variant_name = ""
+
         base_directory = "/usr/local/bin/networks"
 
         print("[INFO] Beginning retraining...")
 
-        # Validate required parameters
-        for key in ["dataset_type", "model_name", "dataset_name", "new_variant_name"]:
-            if key not in data:
-                print("[ERROR] Any required field is missing")
-                await websocket.send(json.dumps(-1))
-                return
-
-        model_name = data["model_name"].lower()
-        dataset_name = data["dataset_name"]
-        new_variant_name = data["new_variant_name"]
-        base_new_model_directory = os.path.join(base_directory, new_variant_name)
-
-        command_train = [
-            "python3", "vendor/pytorch_ssd/train_ssd.py",
-            "--model-dir", base_new_model_directory
-        ]
-
-        # Optional training hyperparameters
-        if "dataset_type" in data:
-            dataset_type = data["dataset_type"]
-            command_train += ["--dataset-type", dataset_type]
-
-        if "epochs" in data: command_train += ["--epochs", str(data["epochs"])]
-        if "batch_size" in data: command_train += ["--batch-size", str(data["batch_size"])]
-        if "learning_rate" in data: command_train += ["--learning-rate", str(data["learning_rate"])]            
-        if "workers" in data: command_train += ["--workers", str(data["workers"])]
-        if "net" in data: command_train += ["--net", data["net"]]
-        if "resolution" in data: command_train += ["--resolution", str(data["resolution"])]
-        if "momentum" in data: command_train += ["--momentum", str(data["momentum"])]
-        if "weight_decay" in data: command_train += ["--weight-decay", str(data["weight_decay"])]
-        if "gamma" in data: command_train += ["--gamma", str(data["gamma"])]
-        if "base_net_lr" in data: command_train += ["--base-net-lr", str(data["base_net_lr"])]
-        if "extra_layers_lr" in data: command_train += ["--extra-layers-lr", str(data["extra_layers_lr"])]
-        if "scheduler" in data: command_train += ["--scheduler", str(data["scheduler"])]
-        if "milestones" in data: command_train += ["--milestones", data["milestones"]]
-        if "t_max" in data: command_train += ["--t-max", str(data["t_max"])]
-        if "validation_epochs" in data: command_train += ["--validation-epochs", str(data["validation_epochs"])]
-        if "debug_steps" in data: command_train += ["--debug-steps", str(data["debug_steps"])]
-        if "use_cuda" in data: command_train += ["--use-cuda", str(data["use_cuda"])]
-        if "log_level" in data: command_train += ["--log-level", data["log_level"]]
-        if "pretrained_ssd" in data: command_train += ["--pretrained-ssd", data["pretrained_ssd"]]
-
-        #Verify if there is already a model with the same name as the new variant
-        if os.path.exists(os.path.join(base_directory, new_variant_name)):
-            print(f"[ERROR] A model already exists with the name {new_variant_name}")
-            await websocket.send(json.dumps(0))
-            return
-
-        # Path to the prepared dataset (in the main folder so far)
-        dataset_path = os.path.join("datasets", dataset_name)
-        coco_json_path = os.path.join(dataset_path, f"{dataset_name}.json")
-
-        if not os.path.exists(dataset_path) or not os.path.exists(coco_json_path):
-            print(f"[ERROR] Dataset path {dataset_path} or JSON file {coco_json_path} does not exist")
-            await websocket.send(json.dumps(-1))
-            return
-
-        # Load COCO dataset
-        coco = COCO(coco_json_path)
-
-        # **Convert dataset based on user selection**
-        if dataset_type == "voc":
-            print("[INFO] Converting dataset to a VOC format...")
-            self.convert_coco_to_voc(coco, dataset_path)
-            dataset_path = os.path.join(dataset_path, "VOC")
-        elif dataset_type == "open_images":
-            print("[INFO] Converting dataset to a OpenImages format...")
-            self.convert_coco_to_openimages(coco, dataset_path)
-            dataset_path = os.path.join(dataset_path, "OpenImages")
-        else:
-            print(f"[Error] Unsupported dataset type '{dataset_type}' provided.")
-            await websocket.send(json.dumps(-1))
-            return
-
-        train_transform = TrainAugmentation(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)
-        target_transform = MatchPrior(mobilenetv1_ssd_config.priors, mobilenetv1_ssd_config.center_variance,  mobilenetv1_ssd_config.size_variance, 0.5)
-        test_transform = TestTransform(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)    
-
-        # **Load the converted dataset for training**
-        if dataset_type == "voc":
-            print("[INFO] Loading datasets for training and validation...")
-            train_dataset = VOCDataset(dataset_path, transform=train_transform, 
-                                       target_transform=target_transform)
-            val_dataset = VOCDataset(dataset_path, transform=test_transform, 
-                                     target_transform=target_transform, is_test=True)
-
-        elif dataset_type == "open_images":
-            print("[INFO] Loading datasets for training and validation...")
-            train_dataset = OpenImagesDataset(dataset_path, transform=train_transform, 
-                                              target_transform=target_transform, dataset_type="train")
-            val_dataset = OpenImagesDataset(dataset_path, transform=test_transform, target_transform=target_transform, 
-                                            dataset_type="test")
-
-        print(f"[INFO] Loaded Dataset with: {len(train_dataset)} train images and, {len(val_dataset)} for validation")
-
-        num_classes = len(train_dataset.class_names)
-        print(f"[INFO] Detected classes amount: {num_classes}")
-
-        command_train += ["--datasets", dataset_path]
-
         try:
-            print("[INFO] Launching training subprocess...")
-            process = subprocess.Popen(
-                command_train,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1
-            )
 
-            for line in process.stdout:
-                print("[TRAIN]", line.strip())
+            # Validate required parameters
+            for key in ["dataset_type", "model_name", "dataset_name", "new_variant_name"]:
+                if key not in data:
+                    print("[ERROR] Any required field is missing")
+                    execution_success  = 0
+                    outcome_code  = 0
+                    await websocket.send(json.dumps(0))
+                    return
 
-            process.wait()
+            model_name = data["model_name"].lower()
+            dataset_name = data["dataset_name"]
+            new_variant_name = data["new_variant_name"]
+            base_new_model_directory = os.path.join(base_directory, new_variant_name)
 
-            if process.returncode != 0:
-                print(f"[ERROR] Training failed with exit code {process.returncode}")
+            command_train = [
+                "python3", "vendor/pytorch_ssd/train_ssd.py",
+                "--model-dir", base_new_model_directory
+            ]
+
+            # Optional training hyperparameters
+            if "dataset_type" in data:
+                dataset_type = data["dataset_type"]
+                command_train += ["--dataset-type", dataset_type]
+
+            if "epochs" in data: command_train += ["--epochs", str(data["epochs"])]
+            if "batch_size" in data: command_train += ["--batch-size", str(data["batch_size"])]
+            if "learning_rate" in data: command_train += ["--learning-rate", str(data["learning_rate"])]            
+            if "workers" in data: command_train += ["--workers", str(data["workers"])]
+            if "net" in data: command_train += ["--net", data["net"]]
+            if "resolution" in data: command_train += ["--resolution", str(data["resolution"])]
+            if "momentum" in data: command_train += ["--momentum", str(data["momentum"])]
+            if "weight_decay" in data: command_train += ["--weight-decay", str(data["weight_decay"])]
+            if "gamma" in data: command_train += ["--gamma", str(data["gamma"])]
+            if "base_net_lr" in data: command_train += ["--base-net-lr", str(data["base_net_lr"])]
+            if "extra_layers_lr" in data: command_train += ["--extra-layers-lr", str(data["extra_layers_lr"])]
+            if "scheduler" in data: command_train += ["--scheduler", str(data["scheduler"])]
+            if "milestones" in data: command_train += ["--milestones", data["milestones"]]
+            if "t_max" in data: command_train += ["--t-max", str(data["t_max"])]
+            if "validation_epochs" in data: command_train += ["--validation-epochs", str(data["validation_epochs"])]
+            if "debug_steps" in data: command_train += ["--debug-steps", str(data["debug_steps"])]
+            if "use_cuda" in data: command_train += ["--use-cuda", str(data["use_cuda"])]
+            if "log_level" in data: command_train += ["--log-level", data["log_level"]]
+            if "pretrained_ssd" in data: command_train += ["--pretrained-ssd", data["pretrained_ssd"]]
+
+            #Verify if there is already a model with the same name as the new variant
+            if os.path.exists(os.path.join(base_directory, new_variant_name)):
+                print(f"[ERROR] A model already exists with the name {new_variant_name}")
+                execution_success  = 0
+                outcome_code  = 0
+                await websocket.send(json.dumps(0))
+                return
+
+            # Path to the prepared dataset (in the main folder so far)
+            dataset_path = os.path.join("datasets", dataset_name)
+            coco_json_path = os.path.join(dataset_path, f"{dataset_name}.json")
+
+            if not os.path.exists(dataset_path) or not os.path.exists(coco_json_path):
+                print(f"[ERROR] Dataset path {dataset_path} or JSON file {coco_json_path} does not exist")
+                execution_success  = 0
+                outcome_code  = -1
                 await websocket.send(json.dumps(-1))
                 return
 
-            print("[INFO] Training complete.")
+            # Load COCO dataset
+            coco = COCO(coco_json_path)
+
+            # **Convert dataset based on user selection**
+            if dataset_type == "voc":
+                print("[INFO] Converting dataset to a VOC format...")
+                self.convert_coco_to_voc(coco, dataset_path)
+                dataset_path = os.path.join(dataset_path, "VOC")
+            elif dataset_type == "open_images":
+                print("[INFO] Converting dataset to a OpenImages format...")
+                self.convert_coco_to_openimages(coco, dataset_path)
+                dataset_path = os.path.join(dataset_path, "OpenImages")
+            else:
+                print(f"[Error] Unsupported dataset type '{dataset_type}' provided.")
+                execution_success  = 0
+                outcome_code  = -1
+                await websocket.send(json.dumps(-1))
+                return
+
+            train_transform = TrainAugmentation(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)
+            target_transform = MatchPrior(mobilenetv1_ssd_config.priors, mobilenetv1_ssd_config.center_variance,  mobilenetv1_ssd_config.size_variance, 0.5)
+            test_transform = TestTransform(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)    
+
+            # **Load the converted dataset for training**
+            if dataset_type == "voc":
+                print("[INFO] Loading datasets for training and validation...")
+                train_dataset = VOCDataset(dataset_path, transform=train_transform, 
+                                        target_transform=target_transform)
+                val_dataset = VOCDataset(dataset_path, transform=test_transform, 
+                                        target_transform=target_transform, is_test=True)
+
+            elif dataset_type == "open_images":
+                print("[INFO] Loading datasets for training and validation...")
+                train_dataset = OpenImagesDataset(dataset_path, transform=train_transform, 
+                                                target_transform=target_transform, dataset_type="train")
+                val_dataset = OpenImagesDataset(dataset_path, transform=test_transform, target_transform=target_transform, 
+                                                dataset_type="test")
+
+            print(f"[INFO] Loaded Dataset with: {len(train_dataset)} train images and, {len(val_dataset)} for validation")
+
+            num_classes = len(train_dataset.class_names)
+            print(f"[INFO] Detected classes amount: {num_classes}")
+
+            command_train += ["--datasets", dataset_path]
+
+            try:
+                print("[INFO] Launching training subprocess...")
+                process = subprocess.Popen(
+                    command_train,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True,
+                    bufsize=1
+                )
+
+                for line in process.stdout:
+                    print("[TRAIN]", line.strip())
+
+                process.wait()
+
+                if process.returncode != 0:
+                    print(f"[ERROR] Training failed with exit code {process.returncode}")
+                    execution_success  = 0
+                    outcome_code  = -1
+                    await websocket.send(json.dumps(-1))
+                    return
+
+                print("[INFO] Training complete.")
+
+            except Exception as e:
+                print(f"[ERROR] Unhandled training error: {str(e)}")
+                execution_success  = 0
+                outcome_code  = -1
+                await websocket.send(json.dumps(-1))
+                return
+
+            command_export = [
+                "python3", "vendor/pytorch_ssd/onnx_export.py",
+                "--model-dir", base_new_model_directory
+            ]
+
+            try:
+                print("[INFO] Exporting model subprocess...")
+                process = subprocess.Popen(
+                    command_export,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True,
+                    bufsize=1
+                )
+
+                for line in process.stdout:
+                    print("[EXPORT]", line.strip())
+
+                process.wait()
+
+                if process.returncode != 0:
+                    print(f"[ERROR] Export failed with exit code {process.returncode}")
+                    execution_success  = 0
+                    outcome_code  = -1
+                    await websocket.send(json.dumps(-1))
+                    return
+
+                print("[INFO] Exportation complete.")
+
+            except Exception as e:
+                print(f"[ERROR] Unhandled export error: {str(e)}")
+                execution_success  = 0
+                outcome_code  = -1
+                await websocket.send(json.dumps(-1))
+                return
+
+            exported_model = os.path.join(base_directory, new_variant_name, "ssd-mobilenet.onnx")
+            new_model_name = os.path.join(base_directory, new_variant_name, new_variant_name + ".onnx")
+
+            exported_labels = os.path.join(base_directory, new_variant_name, "labels.txt")
+            new_labels_name = os.path.join(base_directory, new_variant_name, new_variant_name + "_labels.txt")
+
+            if os.path.exists(exported_model) and os.path.exists(exported_labels):
+                os.rename(exported_model, new_model_name)
+                os.rename(exported_labels, new_labels_name)
+                print(f"[INFO] Renamed model to {new_model_name}")
+                print(f"[INFO] Renamed labels to {new_labels_name}")
+
+            execution_success  = 1
+            outcome_code  = 1    
+
+            await websocket.send(json.dumps(new_variant_name))
+            print("[INFO] Training is done!")
 
         except Exception as e:
-            print(f"[ERROR] Unhandled training error: {str(e)}")
+            print(f"[ERROR] {str(e)}")
+            execution_success  = 0
+            outcome_code  = -1
             await websocket.send(json.dumps(-1))
-            return
+        finally:
+            if args.debug:
+                end_time = time.time()
+                end_dt = datetime.now()
+                duration_seconds = round(end_time - start_time, 3)
 
-        command_export = [
-            "python3", "vendor/pytorch_ssd/onnx_export.py",
-            "--model-dir", base_new_model_directory
-        ]
+                log_data = {
+                    "Command": data["command"],
+                    "Model_Name": model_name,
+                    "Variant_Name": new_variant_name,
+                    "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "Duration_Seconds": duration_seconds,
+                    "Execution_Success": execution_success,
+                    "Outcome_Code": outcome_code,
+                }
 
-        try:
-            print("[INFO] Exporting model subprocess...")
-            process = subprocess.Popen(
-                command_export,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1
-            )
-
-            for line in process.stdout:
-                print("[EXPORT]", line.strip())
-
-            process.wait()
-
-            if process.returncode != 0:
-                print(f"[ERROR] Export failed with exit code {process.returncode}")
-                await websocket.send(json.dumps(-1))
-                return
-
-            print("[INFO] Exportation complete.")
-
-        except Exception as e:
-            print(f"[ERROR] Unhandled export error: {str(e)}")
-            await websocket.send(json.dumps(-1))
-            return
-
-        exported_model = os.path.join(base_directory, new_variant_name, "ssd-mobilenet.onnx")
-        new_model_name = os.path.join(base_directory, new_variant_name, new_variant_name + ".onnx")
-
-        exported_labels = os.path.join(base_directory, new_variant_name, "labels.txt")
-        new_labels_name = os.path.join(base_directory, new_variant_name, new_variant_name + "_labels.txt")
-
-        if os.path.exists(exported_model) and os.path.exists(exported_labels):
-            os.rename(exported_model, new_model_name)
-            os.rename(exported_labels, new_labels_name)
-            print(f"[INFO] Renamed model to {new_model_name}")
-            print(f"[INFO] Renamed labels to {new_labels_name}")
-
-        await websocket.send(json.dumps(new_variant_name))
-        print("[INFO] Training is done!")
+                try:
+                    await self.log_queue.put(log_data)
+                except Exception as log_err:
+                    print(f"[ERROR] Failed to enqueue log: {log_err}")
 
     #command to get the lowest loss trained
-    async def get_best_checkpoint(self, websocket: websockets.WebSocketServerProtocol, data: dict) -> None:
+    async def get_best_checkpoint(self, websocket: websockets.WebSocketServerProtocol, data: dict, args: argparse.Namespace) -> None:
         """
         Return the checkpoint file with the lowest loss for a given model variant name.
 
@@ -1335,42 +1573,86 @@ class ModelManager:
         If not found or an error occurs, returns -1.
         """
 
-        # Validate required parameter
-        if "variant_name" not in data:
-            print("[ERROR] Any required field is missing")
+        start_time = time.time()
+        start_dt = datetime.now()
+        execution_success = 0
+        outcome_code = -1
+        variant_name = ""
+
+        try:
+
+            # Validate required parameter
+            if "variant_name" not in data:
+                print("[WARN] Any required field is missing")
+                execution_success = 0
+                outcome_code = 0
+                await websocket.send(json.dumps(0))
+                return
+
+            base_directory = "/usr/local/bin/networks"        
+            variant_name = data["variant_name"]
+            base_model_directory = os.path.join(base_directory, variant_name)
+
+            best_loss = float('inf')
+            best_checkpoint = None
+
+            for file in os.listdir(base_model_directory):
+                if not file.endswith(".pth"):
+                    continue
+
+                try:
+                    # Extract the loss value from the filename
+                    loss_str = file[file.rfind("-")+1 : -4]  # between last "-" and ".pth"
+                    loss = float(loss_str)
+
+                    if loss < best_loss:
+                        best_loss = loss
+                        best_checkpoint = os.path.join(base_model_directory, file)
+
+                except ValueError:
+                    # Skip files that don't follow the expected naming pattern
+                    execution_success = 0
+                    outcome_code = -1
+                    continue
+
+            if best_checkpoint is None:
+                execution_success = 0
+                outcome_code = -1
+                await websocket.send(json.dumps(-1))
+                raise FileNotFoundError(f"No valid checkpoint with loss found in '{base_model_directory}'")
+
+            print(f"[INFO] The path for the lowest loss checkpoint for model {variant_name} is: {best_checkpoint}")
+            
+            execution_success = 1
+            outcome_code = 1
+            await websocket.send(json.dumps(best_checkpoint))
+
+        except Exception as e:
+            print(f"[ERROR] {str(e)}")
+            execution_success  = 0
+            outcome_code  = -1
             await websocket.send(json.dumps(-1))
-            return
+        finally:
+            if args.debug:
+                end_time = time.time()
+                end_dt = datetime.now()
+                duration_seconds = round(end_time - start_time, 3)
 
-        base_directory = "/usr/local/bin/networks"        
-        variant_name = data["variant_name"]
-        base_model_directory = os.path.join(base_directory, variant_name)
+                log_data = {
+                    "Command": data["command"],
+                    "Model_Name": "",
+                    "Variant_Name": variant_name,
+                    "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "Duration_Seconds": duration_seconds,
+                    "Execution_Success": execution_success,
+                    "Outcome_Code": outcome_code,
+                }
 
-        best_loss = float('inf')
-        best_checkpoint = None
-
-        for file in os.listdir(base_model_directory):
-            if not file.endswith(".pth"):
-                continue
-
-            try:
-                # Extract the loss value from the filename
-                loss_str = file[file.rfind("-")+1 : -4]  # between last "-" and ".pth"
-                loss = float(loss_str)
-
-                if loss < best_loss:
-                    best_loss = loss
-                    best_checkpoint = os.path.join(base_model_directory, file)
-
-            except ValueError:
-                # Skip files that don't follow the expected naming pattern
-                continue
-
-        if best_checkpoint is None:
-            await websocket.send(json.dumps(-1))
-            raise FileNotFoundError(f"No valid checkpoint with loss found in '{base_model_directory}'")
-
-        print(f"[INFO] The path for the lowest loss checkpoint for model {variant_name} is: {best_checkpoint}")
-        await websocket.send(json.dumps(best_checkpoint))
+                try:
+                    await self.log_queue.put(log_data)
+                except Exception as log_err:
+                    print(f"[ERROR] Failed to enqueue log: {log_err}")
 
 #endregion  
 #endregion
