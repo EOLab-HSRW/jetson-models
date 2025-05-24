@@ -1,4 +1,5 @@
 import os
+import csv
 import cv2
 import sys
 import json
@@ -7,6 +8,7 @@ import time
 import shutil
 import random
 import base64
+import asyncio
 import argparse
 import importlib
 import websockets
@@ -38,6 +40,7 @@ class ModelManager:
 #region Constructor
     def __init__(self) -> None:
         self.running_models: Dict[int, BaseModel] = {}
+        self.log_queue = asyncio.Queue()
 #endregion
 
 #region Model Manager Methods
@@ -318,6 +321,25 @@ class ModelManager:
 
         print(f"[INFO] OpenImages dataset generated: {len(train_rows)} train annotations, {len(test_rows)} test annotations.")
 
+    async def log_writer(self):
+        log_file = "log.csv"
+        fieldnames = [
+            "Command", "Model_Name", "Variant_Name",
+            "Start_Timestamp", "End_Timestamp", "Duration_Seconds",
+            "Execution_Success", "Outcome_Code"
+        ]
+        while True:
+            log_data = await self.log_queue.get()
+            try:
+                write_header = not os.path.exists(log_file)
+                with open(log_file, mode="a", newline='') as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    if write_header:
+                        writer.writeheader()
+                    writer.writerow(log_data)
+            except Exception as e:
+                print(f"[ERROR] Failed to write log: {e}")
+
 #region WebSocket Methods
 
     #WebSocket Inizialization
@@ -330,6 +352,9 @@ class ModelManager:
             print("[INFO] WebSocket server is starting...")
 
         try:
+
+            loop = asyncio.get_event_loop()
+            loop.create_task(self.log_writer())
 
             #Set the host ip
             host = "0.0.0.0"
@@ -398,7 +423,7 @@ class ModelManager:
                 elif command == "/models/launch":
                     await self.launch(websocket, data, args)
                 elif command == "/models/run":
-                    await self.run(websocket, data)
+                    await self.run(websocket, data, args)
                 elif command == "/models/stop":
                     await self.stop(websocket, data)
                 elif command == "/models/running":
@@ -444,7 +469,7 @@ class ModelManager:
         start_dt = datetime.now()
         execution_success  = 0
         outcome_code  = -1
-        variant_name = ""
+        variant_name = "No variant"
         response = -1
 
         try:
@@ -453,6 +478,7 @@ class ModelManager:
 
             if model_name == "base_model": 
                 print("[WARN] base_model is not supported")
+                execution_success = 0
                 outcome_code = 0
                 response = 0
             else:
@@ -507,22 +533,15 @@ class ModelManager:
                     "Outcome_Code": outcome_code,
                 }
 
-                log_file = "log.xlsx"
                 try:
-                    if os.path.exists(log_file):
-                        df = pd.read_excel(log_file, engine='openpyxl')
-                        df = pd.concat([df, pd.DataFrame([log_data])], ignore_index=True)
-                    else:
-                        df = pd.DataFrame([log_data])
-                    df.to_excel(log_file, index=False)
-                    print(f"[DEBUG] Log updated: {log_data}")
+                    await self.log_queue.put(log_data)
                 except Exception as log_err:
-                    print(f"[ERROR] Failed to write log: {log_err}")
+                    print(f"[ERROR] Failed to enqueue log: {log_err}")
 
         await websocket.send(json.dumps(response))  
 
     #command to manage all the frames when a model is running
-    async def run(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
+    async def run(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any], args: argparse.Namespace) -> None:
         """
         Run a specific model with an image
         
@@ -534,36 +553,76 @@ class ModelManager:
         If any required key is missing, returns -1 and for spelling error return 0. 
         On success, returns the result of the indicated model.
         """
-    
+
+        start_time = time.time()
+        start_dt = datetime.now()
+        execution_success  = 0
+        outcome_code  = -1
+        response = -1
+
         try:
 
-            try:
+            if len(self.running_models) == 0:
+                print("[WARN] No model is running...")
+                execution_success = 0
+                outcome_code = 0
+                response = 0
+            else:
+                base64_img = data['image']
+                model_id = int(data['model_id'])
 
-                if len(self.running_models) == 0:
-                    print("[WARN] No model is running...")
-                    response = 0
+                if model_id in self.running_models and base64_img not in (None, '', 'null'):
+                    img_data = base64.b64decode(base64_img)
+                    np_arr = np.frombuffer(img_data, np.uint8)
+                    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                    execution_success = 1
+                    outcome_code = 1
+                    response = self.running_models[model_id].run(img)
                 else:
-                    base64_img = data['image']
-                    model_id = int(data['model_id'])
+                    print(f"[WARN] No model is currently running with the model_id: {model_id}")
+                    execution_success = 0
+                    outcome_code = 0
+                    response = 0
 
-                    if model_id in self.running_models and base64_img not in (None, '', 'null'):
-                        img_data = base64.b64decode(base64_img)
-                        np_arr = np.frombuffer(img_data, np.uint8)
-                        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-                        response = self.running_models[model_id].run(img)
-                    else:
-                        print(f"[WARN] No model is currently running with the model_id: {model_id}")
-                        response = 0
-
-            except Exception as e:
-                print(f"[ERROR] Error during model execution: {str(e)}")
-                response = -1
-
-            await websocket.send(json.dumps(response))  
         except Exception as e:
+            execution_success = 0
+            outcome_code = -1
             response = -1
-            print(f"[ERROR] {str(e)}")
+            print(f"[ERROR] Error during model execution: {str(e)}")
             await websocket.send(json.dumps(response))
+            return
+
+        finally:
+            if args.debug:
+                end_time = time.time()
+                end_dt = datetime.now()
+                duration_seconds = round(end_time - start_time, 3)
+
+                model_id = int(data.get("model_id", -1))
+                if model_id in self.running_models:
+                    model_name = self.running_models[model_id].model_name
+                    variant_name = self.running_models[model_id].variant
+                else:
+                    model_name = "No model"
+                    variant_name = "No variant"
+
+                log_data = {
+                    "Command": data["command"],
+                    "Model_Name": model_name,
+                    "Variant_Name": variant_name,
+                    "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "Duration_Seconds": duration_seconds,
+                    "Execution_Success": execution_success,
+                    "Outcome_Code": outcome_code,
+                }
+
+                try:
+                    await self.log_queue.put(log_data)
+                except Exception as log_err:
+                    print(f"[ERROR] Failed to enqueue log: {log_err}")
+
+        await websocket.send(json.dumps(response))  
 
     #command to stop the current model
     async def stop(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
