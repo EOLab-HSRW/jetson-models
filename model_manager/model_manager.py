@@ -29,11 +29,11 @@ sys.path.append(os.path.abspath("vendor/pytorch_ssd"))
 sys.path.append(os.path.abspath("vendor/pytorch_ssd/vision"))
 sys.path.append(os.path.abspath("vendor/pytorch_ssd/vision/utils"))
 
-from vendor.pytorch_ssd.vision.datasets.voc_dataset import VOCDataset
-from vendor.pytorch_ssd.vision.datasets.open_images import OpenImagesDataset
-from vendor.pytorch_ssd.vision.ssd.config import mobilenetv1_ssd_config
-from vendor.pytorch_ssd.vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
 from vendor.pytorch_ssd.vision.ssd.ssd import MatchPrior
+from vendor.pytorch_ssd.vision.datasets.voc_dataset import VOCDataset
+from vendor.pytorch_ssd.vision.ssd.config import mobilenetv1_ssd_config
+from vendor.pytorch_ssd.vision.datasets.open_images import OpenImagesDataset
+from vendor.pytorch_ssd.vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
 
 class ModelManager:
 
@@ -944,217 +944,69 @@ class ModelManager:
                 except Exception as log_err:
                     print(f"[ERROR] Failed to enqueue log: {log_err}") 
 
-    #command to prepare the dataset format
-    async def prepare_dataset(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any]) -> None:
-        """
-        Prepare the dataset for training using COCO format.
-        
-        Required JSON keys for all the images:
-        - "command": "/dataset" indicate the action to create a dataset.
-        - "model_name" : Indicate the model name for retrain (e.g., detectnet)
-        - "id": The number ID of an image.
-        - "image": The string base64 encoded image.
-        - "class_label": The string class label of image (e.g., "person").
-        - "dataset_name": The string name of the dataset.
-
-        Optional keys (with defaults):
-        - "BB": The scaled Bonding Boxes location. Its just required to retrain the detectnet model (e.g., {"x_min": 0.1, "y_min": 0.1, "x_max": 0.5, "y_max": 0.5})
-
-        JSON Format:
-        {
-            "command" : "/dataset",
-            "model_name" : "detectnet, 
-            "dataset": [
-                {
-                    "id": 1,
-                    "image": "<base64_encoded_image_1>",
-                    "BB": [
-                        {"x_min": 0.1, "y_min": 0.1, "x_max": 0.5, "y_max": 0.5},
-                        {"x_min": 0.2, "y_min": 0.3, "x_max": 0.6, "y_max": 0.7}
-                    ]
-                },
-                {
-                    "id": 2,
-                    "image": "<base64_encoded_image_2>",
-                    "BB": [
-                        {"x_min": 0.2, "y_min": 0.2, "x_max": 0.6, "y_max": 0.6}
-                    ]
-                }
-            ],
-            "class_label": "person",
-            "dataset_name": "New_dataset"
-        }
-
-        If any required key is missing returns -1 or the current image will be ignored continue with the next one. 
-        On success, returns the generated dataset name.
-        """
-
-        try:
-
-            if not "model_name" in data:
-                print("[ERROR] The requiered command or model_name key are missing")
-                await websocket.send(json.dumps(0)) 
-                return
-            
-            model_name = data["model_name"]
-
-            response = 0
-            model_name = model_name.lower()
-            models_dir = Path(__file__).resolve().parent.parent / "models"
-
-            for file in models_dir.glob("*py"):
-                if model_name == str(file.stem).lower():
-
-                    category_id = 1   #just a single category so far
-                    dataset = list(data['dataset'])
-                    class_label = data['class_label']
-                    dataset_name = data['dataset_name']
-                    annotation_id = 1
-
-                    if dataset and class_label:
-                        tmp_dir = Path(__file__).resolve().parent.parent / "datasets" / dataset_name
-                        tmp_images_dir = tmp_dir/ "images"
-                        tmp_images_dir.mkdir(parents=True, exist_ok=True)
-                        tmp_dir.mkdir(parents=True, exist_ok=True)  # Create a temporal folder in the project folder if not exists
-
-                        # Initialize COCO dataset structure
-                        coco_data = {
-                            "images": [],
-                            "annotations": [],
-                            "categories": []
-                        }
-
-                        # Add category for class label, just a single class for dataset so far
-                        coco_data["categories"].append({
-                            "id": category_id,
-                            "name": class_label
-                        })
-
-                        for img in dataset:
-                            img_id = img['id']
-                            base64_image = img['image']
-                            bounding_boxes = img['BB']
-
-                            if not img_id or not base64_image:
-                                continue
-
-                            # Decode image and get image size (width, height)
-                            img_data = base64.b64decode(base64_image)
-                            np_arr = np.frombuffer(img_data, np.uint8)
-                            img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-                            img_height, img_width = img.shape[:2]
-
-                            # Save the image in the dataset folder
-                            img_path = tmp_images_dir / f"img_{img_id}.jpg"
-                            with open(img_path, "wb") as img_file:
-                                img_file.write(img_data)
-
-                            # Add image information to COCO dataset
-                            coco_data["images"].append({
-                                "id": img_id,
-                                "file_name": f"img_{img_id}.jpg",
-                                "width": img_width,
-                                "height": img_height
-                            })
-
-                            # Add bounding box annotation (only if DetectNet)
-                            if bounding_boxes and model_name == "detectnet":
-
-                                # Process multiple bounding boxes
-                                for bbox in bounding_boxes:
-                                    try:
-                                        x_min = bbox["x_min"] * img_width
-                                        y_min = bbox["y_min"] * img_height
-                                        x_max = bbox["x_max"] * img_width
-                                        y_max = bbox["y_max"] * img_height
-
-                                        bbox_width = x_max - x_min
-                                        bbox_height = y_max - y_min
-                                        area = bbox_width * bbox_height
-
-                                        if bbox_width <= 0 or bbox_height <= 0:
-                                            print(f"[INFO] Skipping invalid bounding box for image ID {img_id}")
-                                            continue
-
-                                        # Add bounding box annotation
-                                        coco_data["annotations"].append({
-                                            "id": annotation_id,
-                                            "image_id": img_id,
-                                            "category_id": category_id,
-                                            "bbox": [
-                                                x_min,  # Absolute x_min
-                                                y_min,  # Absolute y_min
-                                                bbox_width,
-                                                bbox_height
-                                            ],
-                                            "area": area,
-                                            "iscrowd": 0
-                                        })
-                                        annotation_id += 1  # Increment unique ID for each annotation
-                                    except Exception as bbox_error:
-                                        print(f"[ERROR] Processing bounding box for image {img_id}: {bbox_error}")               
-
-                        # Save COCO dataset to a JSON file
-                        coco_path = tmp_dir / f"{dataset_name}.json"
-                        with open(coco_path, "w") as coco_file:
-                            json.dump(coco_data, coco_file, indent=4)
-
-                        response = dataset_name
-
-                    else:
-                        response = -1
-                        print(f"[ERROR] The dataset or class_label is missing")
-
-            await websocket.send(json.dumps(response))
-
-        except Exception as e:
-            print(f"[ERROR] {str(e)}")
-            response = -1
-            await websocket.send(json.dumps(response)) 
-
     #command to create a dataset with images at a time
     async def prepare_dataset_one_at_a_time(self, websocket: websockets.WebSocketServerProtocol, data: Dict[str, Any], args: argparse.Namespace) -> None:
         """
-        Incrementally build a dataset in COCO format by adding one image and its annotations at a time.
+        Incrementally build a dataset for either DetectNet (object detection using COCO format) 
+        or ImageNet (image classification using folder structure) by adding one image at a time.
 
-        This function creates or appends to a dataset JSON file and corresponding image directory, saving
-        individual images and their bounding box annotations. It is designed for scenarios where data is
-        sent gradually.
+        --------------------------
+        DetectNet Dataset Format:
+        --------------------------
+        Creates a COCO-style JSON file + image folder structure.
 
         Required JSON keys:
-        - "command": "/dataset" indicates dataset creation.
-        - "model_name": The name of the model that will use this dataset (e.g., "detectnet").
-        - "dataset_name": The name of the dataset to create or update.
-        - "class_label": The class label for the current image (e.g., "person").
-        - "dataset": A dictionary containing:
-            - "image": The base64-encoded image string.
-            - "BB": A list of bounding boxes in normalized format:
-                {
-                    "x_min": float,
-                    "y_min": float,
-                    "x_max": float,
-                    "y_max": float
-                }
-
-        JSON Example:
-        {
-            "command": "/dataset",
-            "model_name": "detectnet",
-            "dataset_name": "New_dataset",
-            "class_label": "person",
-            "dataset": {
-                "image": "<base64_encoded_image>",
-                "BB": [
-                    {"x_min": 0.1, "y_min": 0.1, "x_max": 0.5, "y_max": 0.5},
-                    {"x_min": 0.2, "y_min": 0.3, "x_max": 0.6, "y_max": 0.7}
-                ]
-            }
+        - "command": "/dataset"
+        - "model_name": "detectnet"
+        - "dataset_name": <string>
+        - "class_label": <string>
+        - "dataset": {
+            "image": <base64-encoded JPEG>,
+            "BB": [
+                {"x_min": 0.1, "y_min": 0.1, "x_max": 0.5, "y_max": 0.5},
+                ...
+            ]
         }
 
-        Returns:
-        - Sends 1 on success via WebSocket.
-        - Sends 0 if required fields are missing.
-        - Sends -1 if an error occurs or the model does not exist.
+        DetectNet Dataset Layout:
+        ```
+        datasets/<dataset_name>/
+        ├── images/
+        └── <dataset_name>.json   ← COCO annotations
+        ```
+
+        --------------------------
+        ImageNet Dataset Format:
+        --------------------------
+        Creates folder-of-folders format, where each class has its own subdirectory 
+        inside 'train/', 'val/', or 'test/'
+
+        Required JSON keys:
+        - "command": "/dataset"
+        - "model_name": "imagenet"
+        - "dataset_name": <string>
+        - "class_label": <string>  ← used as folder name (e.g., "dog", "cat")
+        - "subset": "train" | "val" | "test"
+        - "dataset": {
+            "image": <base64-encoded JPEG>
+        }
+
+        ImageNet Dataset Layout:
+        ```
+        datasets/<dataset_name>/
+        ├── train/
+        │   ├── <class_label>/
+        │   │   └── img_1.jpg
+        ├── val/
+        │   ├── <class_label>/
+        │   │   └── img_1.jpg
+        └── test/
+        ```
+
+        Returns via WebSocket:
+        -  1 → success
+        -  0 → missing fields or validation error
+        - -1 → general error (e.g., decoding, saving, model not found)
         """
 
         start_time = time.time()
@@ -1165,19 +1017,14 @@ class ModelManager:
 
         try:
 
-            if "model_name" not in data or "dataset_name" not in data or "class_label" not in data or "dataset" not in data:
-                print("[WARN] Required keys are missing in the JSON payload.")
+            if "model_name" not in data:
+                print("[WARN] Required model_name key is missing in the JSON payload.")
                 execution_success  = 0
                 outcome_code  = 0
                 await websocket.send(json.dumps(0)) 
                 return            
 
             model_name = data["model_name"].lower()
-            dataset_name = data["dataset_name"]
-            class_label = data["class_label"]
-            dataset_info = data["dataset"]
-            image_data = dataset_info["image"]
-            bboxes = dataset_info["BB"]
 
             models_dir = Path(__file__).resolve().parent.parent / "models"
             model_exists = any(model_name == file.stem.lower() for file in models_dir.glob("*.py"))
@@ -1189,80 +1036,140 @@ class ModelManager:
                 await websocket.send(json.dumps(-1)) 
                 return
 
-            dataset_path = Path("datasets") / dataset_name
-            images_dir = dataset_path / "images"
-            dataset_file = dataset_path / (dataset_name + ".json")
+            if model_name == "detectnet":
+                
+                if "dataset_name" not in data or "class_label" not in data or "dataset" not in data:
+                    print("[WARN] Required keys are missing in the JSON payload.")
+                    execution_success  = 0
+                    outcome_code  = 0
+                    await websocket.send(json.dumps(0)) 
+                    return   
 
-            images_dir.mkdir(parents=True, exist_ok=True)
+                dataset_name = data["dataset_name"]
+                class_label = data["class_label"]
+                dataset_info = data["dataset"]
+                image_data = dataset_info["image"]
+                bboxes = dataset_info["BB"]
 
-            # Load or initialize annotations.json
-            if dataset_file.exists():
-                with open(dataset_file, 'r') as f:
-                    annotations = json.load(f)
-            else:
-                annotations = {
-                    "images": [],
-                    "annotations": [],
-                    "categories": []
-                }
+                dataset_path = Path("datasets") / dataset_name
+                images_dir = dataset_path / "images"
+                dataset_file = dataset_path / (dataset_name + ".json")
 
-            # Handle categories
-            existing_category = next((cat for cat in annotations["categories"] if cat["name"] == class_label), None)
-            if existing_category:
-                category_id = existing_category["id"]
-            else:
-                category_id = max([cat["id"] for cat in annotations["categories"]], default=0) + 1
-                annotations["categories"].append({
-                    "id": category_id,
-                    "name": class_label
+                images_dir.mkdir(parents=True, exist_ok=True)
+
+                # Load or initialize annotations.json
+                if dataset_file.exists():
+                    with open(dataset_file, 'r') as f:
+                        annotations = json.load(f)
+                else:
+                    annotations = {
+                        "images": [],
+                        "annotations": [],
+                        "categories": []
+                    }
+
+                # Handle categories
+                existing_category = next((cat for cat in annotations["categories"] if cat["name"] == class_label), None)
+                if existing_category:
+                    category_id = existing_category["id"]
+                else:
+                    category_id = max([cat["id"] for cat in annotations["categories"]], default=0) + 1
+                    annotations["categories"].append({
+                        "id": category_id,
+                        "name": class_label
+                    })
+
+                # Generate new image ID
+                image_id = max([img["id"] for img in annotations["images"]], default=0) + 1
+                file_name = f"img_{image_id}.jpg"
+                image_path = images_dir / file_name
+
+                # Decode and save the image
+                img = Image.open(BytesIO(base64.b64decode(image_data)))
+                img.save(image_path)
+                width, height = img.size
+
+                annotations["images"].append({
+                    "id": image_id,
+                    "file_name": file_name,
+                    "width": width,
+                    "height": height
                 })
 
-            # Generate new image ID
-            image_id = max([img["id"] for img in annotations["images"]], default=0) + 1
-            file_name = f"img_{image_id}.jpg"
-            image_path = images_dir / file_name
+                # Add bounding boxes
+                next_ann_id = max([ann["id"] for ann in annotations["annotations"]], default=0) + 1
+                for bbox in bboxes:
+                    x_min = bbox["x_min"] * width
+                    y_min = bbox["y_min"] * height
+                    x_max = bbox["x_max"] * width
+                    y_max = bbox["y_max"] * height
+                    bbox_width = x_max - x_min
+                    bbox_height = y_max - y_min
+                    area = bbox_width * bbox_height
 
-            # Decode and save the image
-            img = Image.open(BytesIO(base64.b64decode(image_data)))
-            img.save(image_path)
-            width, height = img.size
+                    annotations["annotations"].append({
+                        "id": next_ann_id,
+                        "image_id": image_id,
+                        "category_id": category_id,
+                        "bbox": [x_min, y_min, bbox_width, bbox_height],
+                        "area": area,
+                        "iscrowd": 0
+                    })
+                    next_ann_id += 1
 
-            annotations["images"].append({
-                "id": image_id,
-                "file_name": file_name,
-                "width": width,
-                "height": height
-            })
+                # Save updated annotations
+                with open(dataset_file, 'w') as f:
+                    json.dump(annotations, f, indent=4)
 
-            # Add bounding boxes
-            next_ann_id = max([ann["id"] for ann in annotations["annotations"]], default=0) + 1
-            for bbox in bboxes:
-                x_min = bbox["x_min"] * width
-                y_min = bbox["y_min"] * height
-                x_max = bbox["x_max"] * width
-                y_max = bbox["y_max"] * height
-                bbox_width = x_max - x_min
-                bbox_height = y_max - y_min
-                area = bbox_width * bbox_height
+                print(f"status: success image_id: {image_id}")
+                execution_success  = 1
+                outcome_code  = 1
+                await websocket.send(json.dumps(1))
 
-                annotations["annotations"].append({
-                    "id": next_ann_id,
-                    "image_id": image_id,
-                    "category_id": category_id,
-                    "bbox": [x_min, y_min, bbox_width, bbox_height],
-                    "area": area,
-                    "iscrowd": 0
-                })
-                next_ann_id += 1
+            elif model_name == "imagenet":
 
-            # Save updated annotations
-            with open(dataset_file, 'w') as f:
-                json.dump(annotations, f, indent=4)
+                try:
+                    if "dataset_name" not in data or "class_label" not in data or "dataset" not in data:
+                        print("[WARN] Required keys are missing in the JSON payload.")
+                        execution_success  = 0
+                        outcome_code  = 0
+                        await websocket.send(json.dumps(0)) 
+                        return 
+                    
+                    dataset_name = data["dataset_name"]
+                    class_label  = data["class_label"]
+                    subset       = data["subset"].lower()
+                    if subset not in ("train", "val", "test"):
+                        await websocket.send(json.dumps(0))
+                        return
 
-            print(f"status: success image_id: {image_id}")
-            execution_success  = 1
-            outcome_code  = 1
-            await websocket.send(json.dumps(1))
+                    image_b64 = data["dataset"]["image"]
+                    img_bytes = base64.b64decode(image_b64)
+
+                    # Create the target directory if it doesn’t exist
+                    base_dir    = Path("datasets") / dataset_name / subset / class_label
+                    base_dir.mkdir(parents=True, exist_ok=True)               
+                    
+                    # Figure out the next image index in that folder
+                    existing = list(base_dir.glob("img_*.jpg"))
+                    if existing:
+                        # get highest numeric suffix so far
+                        idxs = [int(p.stem.split("_")[1]) for p in existing if "_" in p.stem]
+                        next_id = max(idxs) + 1
+                    else:
+                        next_id = 1
+
+                    filename = f"img_{next_id}.jpg"
+                    save_path = base_dir / filename
+
+                    with open(save_path, "wb") as f:
+                        f.write(img_bytes)
+
+                    await websocket.send(json.dumps(1))
+                
+                except Exception as e:
+                    print(f"[ERROR] Dataset generation error")
+                    await websocket.send(json.dumps(-1))
    
         except Exception as e:
             print(f"[ERROR] {str(e)}")
