@@ -1,3 +1,6 @@
 [submodule "vendor/pytorch-ssd"]
 	path = vendor/pytorch-ssd
 	url = https://github.com/dusty-nv/pytorch-ssd
+[submodule "vendor/pytorch-classification"]
+	path = vendor/pytorch-classification
+	url = https://github.com/dusty-nv/pytorch-classification.git
