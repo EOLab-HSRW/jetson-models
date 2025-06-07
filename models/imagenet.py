@@ -1,3 +1,5 @@
+import os
+import cv2
 import jetson_utils
 import jetson_inference
 from utils.utils import create_option
@@ -34,10 +36,40 @@ class imagenet(BaseModel):
 
         try:
             self.__model_name = data.get('model_name')
-            self.__variant = data.get('variant', "googlenet")
+            self.__variant = data.get('variant_name', "googlenet")
             self.__topK = data.get('topK', 1)
             self.__is_custom = False
-            self.__imagenet = jetson_inference.imageNet(self.__variant)
+
+            # Built-in Jetson-inference model names
+            predefined_models = ["alexnet", "googlenet", "googlenet-12",
+                                 "resnet-18", "resnet-50", "resnet-101", 
+                                 "resnet-152", "vgg-16", "vgg-19", "inception-v4"
+            ]
+
+            if self.__variant in predefined_models: 
+                self.__imagenet = jetson_inference.imageNet(self.__variant)
+            else:
+                # Try to load custom ONNX model
+                model_dir = os.path.join("/usr/local/bin/networks", self.__variant)
+                onnx_path = os.path.join(model_dir, f"{self.__variant}.onnx")
+                labels_path = os.path.join(model_dir, f"{self.__variant}_labels.txt")
+
+                if not os.path.exists(onnx_path):
+                    print(f"[ERROR] ONNX mdeol not found: {onnx_path}")
+                    return False
+                if not os.path.exists(labels_path):
+                    print(f"[ERROR] Labels file not found: {labels_path}")
+                    return False
+                
+                print(f"[INFO] Launching custom model from: {model_dir}")
+                self.__imagenet = jetson_inference.imageNet(
+                    model=onnx_path,
+                    labels=labels_path,
+                    input_blob="input_0",
+                    output_blob="output_0"
+                )
+                self.__is_custom = True
+
             return True
 
         except Exception as e:
@@ -45,6 +77,9 @@ class imagenet(BaseModel):
             return False
 
     def run(self, img):
+
+        if self.is_custom:
+            img = cv2.resize(img, (224,224))
 
         cuda_img = jetson_utils.cudaFromNumpy(img)
 
