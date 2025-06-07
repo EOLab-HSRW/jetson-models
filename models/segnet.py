@@ -39,7 +39,7 @@ class segnet(BaseModel):
         try:
 
             self.__model_name = data.get('model_name')
-            self.__variant = data.get('variant', 'fcn-resnet18-voc')
+            self.__variant = data.get('variant_name', 'fcn-resnet18-voc')
             self.__filter_mode = data.get('filter_mode', 'linear')
             self.__alpha = data.get('alpha', 150.0)
             self.__ignore_class = data.get('ignore_class', 'void')

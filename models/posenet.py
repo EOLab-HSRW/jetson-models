@@ -31,7 +31,7 @@ class posenet(BaseModel):
     def launch(self, data):
         try:
             self.__model_name = data["model_name"]
-            self.__variant = data.get("variant", "resnet18-body")
+            self.__variant = data.get("variant_name", "resnet18-body")
             self.__overlay = data.get("overlay", "none") 
             self.__threshold = data.get("threshold", 0.15)
             self.__is_custom = False
