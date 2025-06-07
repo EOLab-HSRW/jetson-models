@@ -25,15 +25,17 @@ import xml.etree.ElementTree as ET
 from models.base_model import BaseModel
 
 # Dynamically added the submodule path
-sys.path.append(os.path.abspath("vendor/pytorch_ssd"))
-sys.path.append(os.path.abspath("vendor/pytorch_ssd/vision"))
-sys.path.append(os.path.abspath("vendor/pytorch_ssd/vision/utils"))
+sys.path.append(os.path.abspath("vendor/pytorch-ssd"))
+sys.path.append(os.path.abspath("vendor/pytorch-ssd/vision"))
+sys.path.append(os.path.abspath("vendor/pytorch-classification"))
 
-from vendor.pytorch_ssd.vision.ssd.ssd import MatchPrior
-from vendor.pytorch_ssd.vision.datasets.voc_dataset import VOCDataset
-from vendor.pytorch_ssd.vision.ssd.config import mobilenetv1_ssd_config
-from vendor.pytorch_ssd.vision.datasets.open_images import OpenImagesDataset
-from vendor.pytorch_ssd.vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
+from vision.ssd.ssd import MatchPrior
+from vision.datasets.voc_dataset import VOCDataset
+from vision.ssd.config import mobilenetv1_ssd_config
+from vision.datasets.open_images import OpenImagesDataset
+from vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
+
+#from train import main
 
 class ModelManager:
 
@@ -1165,6 +1167,9 @@ class ModelManager:
                     with open(save_path, "wb") as f:
                         f.write(img_bytes)
 
+                    print(f"status: success image_id: {filename}")
+                    execution_success  = 1
+                    outcome_code  = 1
                     await websocket.send(json.dumps(1))
                 
                 except Exception as e:
@@ -1248,198 +1253,364 @@ class ModelManager:
 
         try:
 
-            # Validate required parameters
-            for key in ["dataset_type", "model_name", "dataset_name", "new_variant_name"]:
-                if key not in data:
-                    print("[ERROR] Any required field is missing")
+            if "model_name" not in data:
+                print("[WARN] Required model_name key is missing in the JSON payload.")
+                execution_success  = 0
+                outcome_code  = 0
+                await websocket.send(json.dumps(0)) 
+                return            
+
+            model_name = data["model_name"].lower()
+
+            models_dir = Path(__file__).resolve().parent.parent / "models"
+            model_exists = any(model_name == file.stem.lower() for file in models_dir.glob("*.py"))
+
+            if not model_exists:
+                print(f"[ERROR] Model '{model_name}' not found.")
+                execution_success  = 0
+                outcome_code  = -1
+                await websocket.send(json.dumps(-1)) 
+                return
+
+            if model_name == "detectnet":
+
+                # Validate required parameters
+                for key in ["dataset_type", "model_name", "dataset_name", "new_variant_name"]:
+                    if key not in data:
+                        print("[ERROR] Any required field is missing")
+                        execution_success  = 0
+                        outcome_code  = 0
+                        await websocket.send(json.dumps(0))
+                        return
+
+                dataset_name = data["dataset_name"]
+                new_variant_name = data["new_variant_name"]
+
+                #Verify if there is already a model with the same name as the new variant
+                if os.path.exists(os.path.join(base_directory, new_variant_name)):
+                    print(f"[ERROR] A model already exists with the name {new_variant_name}")
                     execution_success  = 0
                     outcome_code  = 0
                     await websocket.send(json.dumps(0))
                     return
 
-            model_name = data["model_name"].lower()
-            dataset_name = data["dataset_name"]
-            new_variant_name = data["new_variant_name"]
-            base_new_model_directory = os.path.join(base_directory, new_variant_name)
+                base_new_model_directory = os.path.join(base_directory, new_variant_name)
 
-            command_train = [
-                "python3", "vendor/pytorch_ssd/train_ssd.py",
-                "--model-dir", base_new_model_directory
-            ]
+                command_train = [
+                    "python3", "vendor/pytorch-ssd/train_ssd.py",
+                    "--model-dir", base_new_model_directory
+                ]
 
-            # Optional training hyperparameters
-            if "dataset_type" in data:
-                dataset_type = data["dataset_type"]
-                command_train += ["--dataset-type", dataset_type]
+                # Optional training hyperparameters
+                if "dataset_type" in data:
+                    dataset_type = data["dataset_type"]
+                    command_train += ["--dataset-type", dataset_type]
 
-            if "epochs" in data: command_train += ["--epochs", str(data["epochs"])]
-            if "batch_size" in data: command_train += ["--batch-size", str(data["batch_size"])]
-            if "learning_rate" in data: command_train += ["--learning-rate", str(data["learning_rate"])]            
-            if "workers" in data: command_train += ["--workers", str(data["workers"])]
-            if "net" in data: command_train += ["--net", data["net"]]
-            if "resolution" in data: command_train += ["--resolution", str(data["resolution"])]
-            if "momentum" in data: command_train += ["--momentum", str(data["momentum"])]
-            if "weight_decay" in data: command_train += ["--weight-decay", str(data["weight_decay"])]
-            if "gamma" in data: command_train += ["--gamma", str(data["gamma"])]
-            if "base_net_lr" in data: command_train += ["--base-net-lr", str(data["base_net_lr"])]
-            if "extra_layers_lr" in data: command_train += ["--extra-layers-lr", str(data["extra_layers_lr"])]
-            if "scheduler" in data: command_train += ["--scheduler", str(data["scheduler"])]
-            if "milestones" in data: command_train += ["--milestones", data["milestones"]]
-            if "t_max" in data: command_train += ["--t-max", str(data["t_max"])]
-            if "validation_epochs" in data: command_train += ["--validation-epochs", str(data["validation_epochs"])]
-            if "debug_steps" in data: command_train += ["--debug-steps", str(data["debug_steps"])]
-            if "use_cuda" in data: command_train += ["--use-cuda", str(data["use_cuda"])]
-            if "log_level" in data: command_train += ["--log-level", data["log_level"]]
-            if "pretrained_ssd" in data: command_train += ["--pretrained-ssd", data["pretrained_ssd"]]
+                if "epochs" in data: command_train += ["--epochs", str(data["epochs"])]
+                if "batch_size" in data: command_train += ["--batch-size", str(data["batch_size"])]
+                if "learning_rate" in data: command_train += ["--learning-rate", str(data["learning_rate"])]            
+                if "workers" in data: command_train += ["--workers", str(data["workers"])]
+                if "net" in data: command_train += ["--net", data["net"]]
+                if "resolution" in data: command_train += ["--resolution", str(data["resolution"])]
+                if "momentum" in data: command_train += ["--momentum", str(data["momentum"])]
+                if "weight_decay" in data: command_train += ["--weight-decay", str(data["weight_decay"])]
+                if "gamma" in data: command_train += ["--gamma", str(data["gamma"])]
+                if "base_net_lr" in data: command_train += ["--base-net-lr", str(data["base_net_lr"])]
+                if "extra_layers_lr" in data: command_train += ["--extra-layers-lr", str(data["extra_layers_lr"])]
+                if "scheduler" in data: command_train += ["--scheduler", str(data["scheduler"])]
+                if "milestones" in data: command_train += ["--milestones", data["milestones"]]
+                if "t_max" in data: command_train += ["--t-max", str(data["t_max"])]
+                if "validation_epochs" in data: command_train += ["--validation-epochs", str(data["validation_epochs"])]
+                if "debug_steps" in data: command_train += ["--debug-steps", str(data["debug_steps"])]
+                if "use_cuda" in data: command_train += ["--use-cuda", str(data["use_cuda"])]
+                if "log_level" in data: command_train += ["--log-level", data["log_level"]]
+                if "pretrained_ssd" in data: command_train += ["--pretrained-ssd", data["pretrained_ssd"]]
 
-            #Verify if there is already a model with the same name as the new variant
-            if os.path.exists(os.path.join(base_directory, new_variant_name)):
-                print(f"[ERROR] A model already exists with the name {new_variant_name}")
-                execution_success  = 0
-                outcome_code  = 0
-                await websocket.send(json.dumps(0))
-                return
+                # Path to the prepared dataset (in the main folder so far)
+                dataset_path = os.path.join("datasets", dataset_name)
+                coco_json_path = os.path.join(dataset_path, f"{dataset_name}.json")
 
-            # Path to the prepared dataset (in the main folder so far)
-            dataset_path = os.path.join("datasets", dataset_name)
-            coco_json_path = os.path.join(dataset_path, f"{dataset_name}.json")
-
-            if not os.path.exists(dataset_path) or not os.path.exists(coco_json_path):
-                print(f"[ERROR] Dataset path {dataset_path} or JSON file {coco_json_path} does not exist")
-                execution_success  = 0
-                outcome_code  = -1
-                await websocket.send(json.dumps(-1))
-                return
-
-            # Load COCO dataset
-            coco = COCO(coco_json_path)
-
-            # **Convert dataset based on user selection**
-            if dataset_type == "voc":
-                print("[INFO] Converting dataset to a VOC format...")
-                self.convert_coco_to_voc(coco, dataset_path)
-                dataset_path = os.path.join(dataset_path, "VOC")
-            elif dataset_type == "open_images":
-                print("[INFO] Converting dataset to a OpenImages format...")
-                self.convert_coco_to_openimages(coco, dataset_path)
-                dataset_path = os.path.join(dataset_path, "OpenImages")
-            else:
-                print(f"[Error] Unsupported dataset type '{dataset_type}' provided.")
-                execution_success  = 0
-                outcome_code  = -1
-                await websocket.send(json.dumps(-1))
-                return
-
-            train_transform = TrainAugmentation(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)
-            target_transform = MatchPrior(mobilenetv1_ssd_config.priors, mobilenetv1_ssd_config.center_variance,  mobilenetv1_ssd_config.size_variance, 0.5)
-            test_transform = TestTransform(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)    
-
-            # **Load the converted dataset for training**
-            if dataset_type == "voc":
-                print("[INFO] Loading datasets for training and validation...")
-                train_dataset = VOCDataset(dataset_path, transform=train_transform, 
-                                        target_transform=target_transform)
-                val_dataset = VOCDataset(dataset_path, transform=test_transform, 
-                                        target_transform=target_transform, is_test=True)
-
-            elif dataset_type == "open_images":
-                print("[INFO] Loading datasets for training and validation...")
-                train_dataset = OpenImagesDataset(dataset_path, transform=train_transform, 
-                                                target_transform=target_transform, dataset_type="train")
-                val_dataset = OpenImagesDataset(dataset_path, transform=test_transform, target_transform=target_transform, 
-                                                dataset_type="test")
-
-            print(f"[INFO] Loaded Dataset with: {len(train_dataset)} train images and, {len(val_dataset)} for validation")
-
-            num_classes = len(train_dataset.class_names)
-            print(f"[INFO] Detected classes amount: {num_classes}")
-
-            command_train += ["--datasets", dataset_path]
-
-            try:
-                print("[INFO] Launching training subprocess...")
-                process = subprocess.Popen(
-                    command_train,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    universal_newlines=True,
-                    bufsize=1
-                )
-
-                for line in process.stdout:
-                    print("[TRAIN]", line.strip())
-
-                process.wait()
-
-                if process.returncode != 0:
-                    print(f"[ERROR] Training failed with exit code {process.returncode}")
+                if not os.path.exists(dataset_path) or not os.path.exists(coco_json_path):
+                    print(f"[ERROR] Dataset path {dataset_path} or JSON file {coco_json_path} does not exist")
                     execution_success  = 0
                     outcome_code  = -1
                     await websocket.send(json.dumps(-1))
                     return
 
-                print("[INFO] Training complete.")
+                # Load COCO dataset
+                coco = COCO(coco_json_path)
 
-            except Exception as e:
-                print(f"[ERROR] Unhandled training error: {str(e)}")
-                execution_success  = 0
-                outcome_code  = -1
-                await websocket.send(json.dumps(-1))
-                return
-
-            command_export = [
-                "python3", "vendor/pytorch_ssd/onnx_export.py",
-                "--model-dir", base_new_model_directory
-            ]
-
-            try:
-                print("[INFO] Exporting model subprocess...")
-                process = subprocess.Popen(
-                    command_export,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    universal_newlines=True,
-                    bufsize=1
-                )
-
-                for line in process.stdout:
-                    print("[EXPORT]", line.strip())
-
-                process.wait()
-
-                if process.returncode != 0:
-                    print(f"[ERROR] Export failed with exit code {process.returncode}")
+                # **Convert dataset based on user selection**
+                if dataset_type == "voc":
+                    print("[INFO] Converting dataset to a VOC format...")
+                    self.convert_coco_to_voc(coco, dataset_path)
+                    dataset_path = os.path.join(dataset_path, "VOC")
+                elif dataset_type == "open_images":
+                    print("[INFO] Converting dataset to a OpenImages format...")
+                    self.convert_coco_to_openimages(coco, dataset_path)
+                    dataset_path = os.path.join(dataset_path, "OpenImages")
+                else:
+                    print(f"[Error] Unsupported dataset type '{dataset_type}' provided.")
                     execution_success  = 0
                     outcome_code  = -1
                     await websocket.send(json.dumps(-1))
                     return
 
-                print("[INFO] Exportation complete.")
+                train_transform = TrainAugmentation(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)
+                target_transform = MatchPrior(mobilenetv1_ssd_config.priors, mobilenetv1_ssd_config.center_variance,  mobilenetv1_ssd_config.size_variance, 0.5)
+                test_transform = TestTransform(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)    
 
-            except Exception as e:
-                print(f"[ERROR] Unhandled export error: {str(e)}")
-                execution_success  = 0
-                outcome_code  = -1
-                await websocket.send(json.dumps(-1))
-                return
+                # **Load the converted dataset for training**
+                if dataset_type == "voc":
+                    print("[INFO] Loading datasets for training and validation...")
+                    train_dataset = VOCDataset(dataset_path, transform=train_transform, 
+                                            target_transform=target_transform)
+                    val_dataset = VOCDataset(dataset_path, transform=test_transform, 
+                                            target_transform=target_transform, is_test=True)
 
-            exported_model = os.path.join(base_directory, new_variant_name, "ssd-mobilenet.onnx")
-            new_model_name = os.path.join(base_directory, new_variant_name, new_variant_name + ".onnx")
+                elif dataset_type == "open_images":
+                    print("[INFO] Loading datasets for training and validation...")
+                    train_dataset = OpenImagesDataset(dataset_path, transform=train_transform, 
+                                                    target_transform=target_transform, dataset_type="train")
+                    val_dataset = OpenImagesDataset(dataset_path, transform=test_transform, target_transform=target_transform, 
+                                                    dataset_type="test")
 
-            exported_labels = os.path.join(base_directory, new_variant_name, "labels.txt")
-            new_labels_name = os.path.join(base_directory, new_variant_name, new_variant_name + "_labels.txt")
+                print(f"[INFO] Loaded Dataset with: {len(train_dataset)} train images and, {len(val_dataset)} for validation")
 
-            if os.path.exists(exported_model) and os.path.exists(exported_labels):
-                os.rename(exported_model, new_model_name)
-                os.rename(exported_labels, new_labels_name)
-                print(f"[INFO] Renamed model to {new_model_name}")
-                print(f"[INFO] Renamed labels to {new_labels_name}")
+                num_classes = len(train_dataset.class_names)
+                print(f"[INFO] Detected classes amount: {num_classes}")
 
-            execution_success  = 1
-            outcome_code  = 1    
+                command_train += ["--datasets", dataset_path]
 
-            await websocket.send(json.dumps(new_variant_name))
-            print("[INFO] Training is done!")
+                try:
+                    print("[INFO] Launching training subprocess...")
+                    process = subprocess.Popen(
+                        command_train,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                        bufsize=1
+                    )
+
+                    for line in process.stdout:
+                        print("[TRAIN]", line.strip())
+
+                    process.wait()
+
+                    if process.returncode != 0:
+                        print(f"[ERROR] Training failed with exit code {process.returncode}")
+                        execution_success  = 0
+                        outcome_code  = -1
+                        await websocket.send(json.dumps(-1))
+                        return
+
+                    print("[INFO] Training complete.")
+
+                except Exception as e:
+                    print(f"[ERROR] Unhandled training error: {str(e)}")
+                    execution_success  = 0
+                    outcome_code  = -1
+                    await websocket.send(json.dumps(-1))
+                    return
+
+                command_export = [
+                    "python3", "vendor/pytorch-ssd/onnx_export.py",
+                    "--model-dir", base_new_model_directory
+                ]
+
+                try:
+                    print("[INFO] Exporting model subprocess...")
+                    process = subprocess.Popen(
+                        command_export,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                        bufsize=1
+                    )
+
+                    for line in process.stdout:
+                        print("[EXPORT]", line.strip())
+
+                    process.wait()
+
+                    if process.returncode != 0:
+                        print(f"[ERROR] Export failed with exit code {process.returncode}")
+                        execution_success  = 0
+                        outcome_code  = -1
+                        await websocket.send(json.dumps(-1))
+                        return
+
+                    print("[INFO] Exportation complete.")
+
+                except Exception as e:
+                    print(f"[ERROR] Unhandled export error: {str(e)}")
+                    execution_success  = 0
+                    outcome_code  = -1
+                    await websocket.send(json.dumps(-1))
+                    return
+
+                exported_model = os.path.join(base_directory, new_variant_name, "ssd-mobilenet.onnx")
+                new_model_name = os.path.join(base_directory, new_variant_name, new_variant_name + ".onnx")
+
+                exported_labels = os.path.join(base_directory, new_variant_name, "labels.txt")
+                new_labels_name = os.path.join(base_directory, new_variant_name, new_variant_name + "_labels.txt")
+
+                if os.path.exists(exported_model) and os.path.exists(exported_labels):
+                    os.rename(exported_model, new_model_name)
+                    os.rename(exported_labels, new_labels_name)
+                    print(f"[INFO] Renamed model to {new_model_name}")
+                    print(f"[INFO] Renamed labels to {new_labels_name}")
+
+                execution_success  = 1
+                outcome_code  = 1    
+
+                await websocket.send(json.dumps(new_variant_name))
+                print("[INFO] Training is done!")
+            
+            elif model_name == "imagenet":
+                
+                for key in ["dataset_name", "new_variant_name"]:
+                    if key not in data:
+                        print("[ERROR] Missing required field(s) for ImageNet training.")
+                        await websocket.send(json.dumps(0))
+                        return
+                    
+                dataset_name = data["dataset_name"]
+                new_variant_name = data["new_variant_name"]
+                base_new_model_directory = os.path.join(base_directory, new_variant_name)
+                dataset_path = os.path.join("datasets", dataset_name)
+                arch = ""
+
+                if not os.path.exists(dataset_path):
+                    print(f"[ERROR] Dataset folder '{dataset_path}' not found.")
+                    await websocket.send(json.dumps(-1))
+                    return
+
+                if not os.path.isdir(os.path.join(dataset_path, "train")) or not os.path.isdir(os.path.join(dataset_path, "val")):
+                    print(f"[ERROR] Dataset must contain 'train/' and 'val/' folders.")
+                    await websocket.send(json.dumps(-1))
+                    return
+
+                if os.path.exists(base_new_model_directory):
+                    print(f"[ERROR] A model with name '{new_variant_name}' already exists.")
+                    await websocket.send(json.dumps(0))
+                    return
+
+                os.makedirs(base_new_model_directory, exist_ok=True)
+
+                command_train = [
+                    "python3", "vendor/pytorch-classification/train.py",
+                    dataset_path,
+                    "--model-dir", base_new_model_directory
+                ]
+
+                # Optional training hyperparameters
+                if "epochs" in data: command_train += ["--epochs", str(data["epochs"])]
+                if "dataset_type" in data: command_train += ["--dataset-type", str(data["dataset_type"])]
+                if "multi_label" in data: command_train += ["--multi-label", str(data["multi_label"])]
+                if "multi_label_threshold" in data: command_train += ["--multi-label-threshold", str(data["multi_label_threshold"])]
+                if "workers" in data: command_train += ["--workers", str(data["workers"])]
+                if "start_epoch" in data: command_train += ["--start-epoch", str(data["start_epoch"])]
+                if "batch_size" in data: command_train += ["--batch-size", str(data["batch_size"])]
+                if "learning_rate" in data: command_train += ["--learning-rate", str(data["learning_rate"])]
+                if "momentum" in data: command_train += ["--momentum", str(data["momentum"])]  
+                if "weight_decay" in data: command_train += ["--weight-decay", str(data["weight_decay"])]
+                if "resume" in data: command_train += ["--resume", str(data["resume"])] 
+                if "pretrained" in data: command_train += ["--pretrained", str(data["pretrained"])]  
+                if "resume" in data: command_train += ["--resume", str(data["resume"])] 
+                if "seed" in data: command_train += ["--seed", str(data["seed"])]
+                if "gpu" in data: command_train += ["--gpu", str(data["gpu"])]
+
+                if "arch" in data: 
+                    arch = str(data["arch"])
+                    command_train += ["--arch", arch]
+                else:
+                    arch = "resnet18"
+
+                try:
+                    print("[INFO] Launching imagenet training subprocess...")
+                    process = subprocess.Popen(
+                        command_train,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                        bufsize=1
+                    )
+
+                    for line in process.stdout:
+                        print("[TRAIN]", line.strip())
+
+                    process.wait()
+
+                    if process.returncode != 0:
+                        print(f"[ERROR] Training failed with exit code {process.returncode}")
+                        execution_success  = 0
+                        outcome_code  = -1
+                        await websocket.send(json.dumps(-1))
+                        return
+
+                    print("[INFO] Training complete.")
+
+                    command_export = [
+                        "python3", "vendor/pytorch-classification/onnx_export.py",
+                        "--model-dir", base_new_model_directory
+                    ]
+
+                    try:
+                        print("[INFO] Exporting model subprocess...")
+                        process = subprocess.Popen(
+                            command_export,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            universal_newlines=True,
+                            bufsize=1
+                        )
+
+                        for line in process.stdout:
+                            print("[EXPORT]", line.strip())
+
+                        process.wait()
+
+                        if process.returncode != 0:
+                            print(f"[ERROR] Export failed with exit code {process.returncode}")
+                            execution_success  = 0
+                            outcome_code  = -1
+                            await websocket.send(json.dumps(-1))
+                            return
+
+                        print("[INFO] Exportation complete.")
+
+                    except Exception as e:
+                        print(f"[ERROR] Unhandled export error: {str(e)}")
+                        execution_success  = 0
+                        outcome_code  = -1
+                        await websocket.send(json.dumps(-1))
+                        return
+
+                    exported_model = os.path.join(base_directory, new_variant_name, arch + '.onnx')
+                    new_model_name = os.path.join(base_directory, new_variant_name, new_variant_name + ".onnx")
+
+                    exported_labels = os.path.join(base_directory, new_variant_name, "labels.txt")
+                    new_labels_name = os.path.join(base_directory, new_variant_name, new_variant_name + "_labels.txt")
+
+                    if os.path.exists(exported_model) and os.path.exists(exported_labels):
+                        os.rename(exported_model, new_model_name)
+                        os.rename(exported_labels, new_labels_name)
+                        print(f"[INFO] Renamed model to {new_model_name}")
+                        print(f"[INFO] Renamed labels to {new_labels_name}")
+
+                    execution_success  = 1
+                    outcome_code  = 1    
+
+                    await websocket.send(json.dumps(new_variant_name))
+                    print("[INFO] Training is done!")
+
+                except Exception as e:
+                    print(f"[ERROR] Unhandled training error: {str(e)}")
+                    execution_success  = 0
+                    outcome_code  = -1
+                    await websocket.send(json.dumps(-1))
+                    return
 
         except Exception as e:
             print(f"[ERROR] {str(e)}")
