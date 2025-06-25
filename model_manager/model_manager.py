@@ -39,6 +39,9 @@ from vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
 
 class ModelManager:
 
+    #Global variables
+    log_file = ""
+
 #region Constructor
     def __init__(self) -> None:
         self.running_models: Dict[int, BaseModel] = {}
@@ -324,7 +327,7 @@ class ModelManager:
         print(f"[INFO] OpenImages dataset generated: {len(train_rows)} train annotations, {len(test_rows)} test annotations.")
 
     async def log_writer(self):
-        log_file = "log.csv"
+        global log_file
         fieldnames = [
             "Command", "Model_Name", "Variant_Name",
             "Start_Timestamp", "End_Timestamp", "Duration_Seconds",
@@ -350,6 +353,8 @@ class ModelManager:
 
         if args.debug:
             print("[INFO] WebSocket server is starting in debug mode...")
+            global log_file
+            log_file = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         else:
             print("[INFO] WebSocket server is starting...")
 
@@ -737,8 +742,8 @@ class ModelManager:
 
                 log_data = {
                     "Command": data["command"],
-                    "Model_Name": str(stopped_models_names),
-                    "Variant_Name": str(stopped_variants),
+                    "Model_Name": "; ".join(map(str, stopped_models_names)),
+                    "Variant_Name": "; ".join(map(str, stopped_variants)),
                     "Start_Timestamp": start_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
