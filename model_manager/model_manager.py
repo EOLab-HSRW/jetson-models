@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
 from pycocotools.coco import COCO
+from utils.utils import delete_dir
 import xml.etree.ElementTree as ET
 from models.base_model import BaseModel
 
@@ -34,6 +35,9 @@ from vision.datasets.voc_dataset import VOCDataset
 from vision.ssd.config import mobilenetv1_ssd_config
 from vision.datasets.open_images import OpenImagesDataset
 from vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
+
+#Const variables
+BASE_NETWORKS_DIR = "/usr/local/bin/networks"   
 
 #from train import main
 
@@ -1252,8 +1256,6 @@ class ModelManager:
         model_name = ""
         new_variant_name = ""
 
-        base_directory = "/usr/local/bin/networks"
-
         print("[INFO] Beginning retraining...")
 
         try:
@@ -1292,14 +1294,14 @@ class ModelManager:
                 new_variant_name = data["new_variant_name"]
 
                 #Verify if there is already a model with the same name as the new variant
-                if os.path.exists(os.path.join(base_directory, new_variant_name)):
+                if os.path.exists(os.path.join(BASE_NETWORKS_DIR, new_variant_name)):
                     print(f"[ERROR] A model already exists with the name {new_variant_name}")
                     execution_success  = 0
                     outcome_code  = 0
                     await websocket.send(json.dumps(0))
                     return
 
-                base_new_model_directory = os.path.join(base_directory, new_variant_name)
+                base_new_model_directory = os.path.join(BASE_NETWORKS_DIR, new_variant_name)
 
                 command_train = [
                     "python3", "vendor/pytorch-ssd/train_ssd.py",
@@ -1339,6 +1341,7 @@ class ModelManager:
                     print(f"[ERROR] Dataset path {dataset_path} or JSON file {coco_json_path} does not exist")
                     execution_success  = 0
                     outcome_code  = -1
+                    delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
 
@@ -1358,6 +1361,7 @@ class ModelManager:
                     print(f"[Error] Unsupported dataset type '{dataset_type}' provided.")
                     execution_success  = 0
                     outcome_code  = -1
+                    delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
 
@@ -1406,6 +1410,7 @@ class ModelManager:
                         print(f"[ERROR] Training failed with exit code {process.returncode}")
                         execution_success  = 0
                         outcome_code  = -1
+                        delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                         await websocket.send(json.dumps(-1))
                         return
 
@@ -1415,6 +1420,7 @@ class ModelManager:
                     print(f"[ERROR] Unhandled training error: {str(e)}")
                     execution_success  = 0
                     outcome_code  = -1
+                    delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
 
@@ -1442,6 +1448,7 @@ class ModelManager:
                         print(f"[ERROR] Export failed with exit code {process.returncode}")
                         execution_success  = 0
                         outcome_code  = -1
+                        delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                         await websocket.send(json.dumps(-1))
                         return
 
@@ -1451,14 +1458,15 @@ class ModelManager:
                     print(f"[ERROR] Unhandled export error: {str(e)}")
                     execution_success  = 0
                     outcome_code  = -1
+                    delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
 
-                exported_model = os.path.join(base_directory, new_variant_name, "ssd-mobilenet.onnx")
-                new_model_name = os.path.join(base_directory, new_variant_name, new_variant_name + ".onnx")
+                exported_model = os.path.join(BASE_NETWORKS_DIR, new_variant_name, "ssd-mobilenet.onnx")
+                new_model_name = os.path.join(BASE_NETWORKS_DIR, new_variant_name, new_variant_name + ".onnx")
 
-                exported_labels = os.path.join(base_directory, new_variant_name, "labels.txt")
-                new_labels_name = os.path.join(base_directory, new_variant_name, new_variant_name + "_labels.txt")
+                exported_labels = os.path.join(BASE_NETWORKS_DIR, new_variant_name, "labels.txt")
+                new_labels_name = os.path.join(BASE_NETWORKS_DIR, new_variant_name, new_variant_name + "_labels.txt")
 
                 if os.path.exists(exported_model) and os.path.exists(exported_labels):
                     os.rename(exported_model, new_model_name)
@@ -1482,7 +1490,7 @@ class ModelManager:
                     
                 dataset_name = data["dataset_name"]
                 new_variant_name = data["new_variant_name"]
-                base_new_model_directory = os.path.join(base_directory, new_variant_name)
+                base_new_model_directory = os.path.join(BASE_NETWORKS_DIR, new_variant_name)
                 dataset_path = os.path.join("datasets", dataset_name)
                 arch = ""
 
@@ -1551,6 +1559,7 @@ class ModelManager:
                         print(f"[ERROR] Training failed with exit code {process.returncode}")
                         execution_success  = 0
                         outcome_code  = -1
+                        delete_dir(base_new_model_directory)
                         await websocket.send(json.dumps(-1))
                         return
 
@@ -1580,6 +1589,7 @@ class ModelManager:
                             print(f"[ERROR] Export failed with exit code {process.returncode}")
                             execution_success  = 0
                             outcome_code  = -1
+                            delete_dir(base_new_model_directory)
                             await websocket.send(json.dumps(-1))
                             return
 
@@ -1589,14 +1599,15 @@ class ModelManager:
                         print(f"[ERROR] Unhandled export error: {str(e)}")
                         execution_success  = 0
                         outcome_code  = -1
+                        delete_dir(base_new_model_directory)
                         await websocket.send(json.dumps(-1))
                         return
 
-                    exported_model = os.path.join(base_directory, new_variant_name, arch + '.onnx')
-                    new_model_name = os.path.join(base_directory, new_variant_name, new_variant_name + ".onnx")
+                    exported_model = os.path.join(BASE_NETWORKS_DIR, new_variant_name, arch + '.onnx')
+                    new_model_name = os.path.join(BASE_NETWORKS_DIR, new_variant_name, new_variant_name + ".onnx")
 
-                    exported_labels = os.path.join(base_directory, new_variant_name, "labels.txt")
-                    new_labels_name = os.path.join(base_directory, new_variant_name, new_variant_name + "_labels.txt")
+                    exported_labels = os.path.join(BASE_NETWORKS_DIR, new_variant_name, "labels.txt")
+                    new_labels_name = os.path.join(BASE_NETWORKS_DIR, new_variant_name, new_variant_name + "_labels.txt")
 
                     if os.path.exists(exported_model) and os.path.exists(exported_labels):
                         os.rename(exported_model, new_model_name)
@@ -1614,6 +1625,7 @@ class ModelManager:
                     print(f"[ERROR] Unhandled training error: {str(e)}")
                     execution_success  = 0
                     outcome_code  = -1
+                    delete_dir(base_new_model_directory)
                     await websocket.send(json.dumps(-1))
                     return
 
@@ -1671,10 +1683,9 @@ class ModelManager:
                 outcome_code = 0
                 await websocket.send(json.dumps(0))
                 return
-
-            base_directory = "/usr/local/bin/networks"        
+   
             variant_name = data["variant_name"]
-            base_model_directory = os.path.join(base_directory, variant_name)
+            base_model_directory = os.path.join(BASE_NETWORKS_DIR, variant_name)
 
             best_loss = float('inf')
             best_checkpoint = None
