@@ -1,3 +1,5 @@
+import os
+import shutil
 from collections.abc import Sequence, Mapping, Set
 
 def create_option(typ: type, default: object, help="", options=[]) -> dict:
@@ -44,3 +46,19 @@ def create_option(typ: type, default: object, help="", options=[]) -> dict:
         "help": help,
         "options": options
     }
+
+def delete_dir(dir_path: str) -> bool:
+    """
+    Utility to delete an empty or no empty folder
+
+    Args:
+        dir_path (str): The absolute path of the directory 
+
+    Returns:
+        Boolean: Returns True if the folder was found and deleted and false in case the folder was not found.
+    """
+    if os.path.exists(dir_path):
+        shutil.rmtree(dir_path)
+        return True
+    else:
+        return False
