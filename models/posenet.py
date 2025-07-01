@@ -67,8 +67,8 @@ class posenet(BaseModel):
         return pose_info
 
     def stop(self):
+        print(f"[INFO] PoseNet model with variant '{self.__variant}' has been stopped")
         self.__net = None
-        print("PoseNet model stopped")
 
     @staticmethod
     def get_opts():

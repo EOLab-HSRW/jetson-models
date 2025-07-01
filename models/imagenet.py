@@ -100,8 +100,8 @@ class imagenet(BaseModel):
         return predictions_info[:self.__topK]
 
     def stop(self):
+        print(f"[INFO] ImageNet model with variant '{self.__variant}' has been stopped")
         self.__imagenet = None
-        print("imagenet model stopped")
 
     def get_opts():
 

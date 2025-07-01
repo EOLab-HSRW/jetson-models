@@ -112,8 +112,8 @@ class detectnet(BaseModel):
         return detection_info   
 
     def stop(self):
-        self.__detectnet = None
-        print("detecnet model stopped")
+        print(f"[INFO] DetectNet model with variant '{self.__variant}' has been stopped")
+        self.__detectnet = None  
 
     def get_opts():
 

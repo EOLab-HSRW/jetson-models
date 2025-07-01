@@ -99,8 +99,8 @@ class segnet(BaseModel):
         return output_data
 
     def stop(self):
+        print(f"[INFO] SegNet model with variant '{self.__variant}' has been stopped")
         self.__segnet = None
-        print("SegNet model stopped")
 
     @staticmethod
     def get_opts():
