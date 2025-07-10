@@ -1,7 +1,8 @@
-import cv2
+import io
 import base64
 import numpy as np
 import jetson_utils
+from PIL import Image
 import jetson_inference
 from utils.utils import create_option
 from models.base_model import BaseModel
@@ -86,8 +87,10 @@ class segnet(BaseModel):
 
         numpy_overlay = jetson_utils.cudaToNumpy(mask_overlay)
 
-        _, encoded_img = cv2.imencode('.jpg', numpy_overlay)
-        img_bytes = encoded_img.tobytes()
+        image = Image.fromarray(numpy_overlay)
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        img_bytes = buffer.getvalue()
 
         base64_image_data = base64.b64encode(img_bytes).decode('utf-8')
 
