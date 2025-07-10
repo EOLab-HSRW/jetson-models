@@ -1,5 +1,7 @@
 import os
 import shutil
+import numpy as np
+import jetson_utils
 from collections.abc import Sequence, Mapping, Set
 
 def create_option(typ: type, default: object, help="", options=[]) -> dict:
@@ -62,3 +64,40 @@ def delete_dir(dir_path: str) -> bool:
         return True
     else:
         return False
+
+def get_cudaImgFromNumpy(img: np.ndarray) -> jetson_utils.cudaImage:
+    """
+    Convert a NumPy ndarray image to a Jetson-compatible CUDA image.
+
+    Args:
+        img (np.ndarray): The input image as a NumPy array.
+
+    Returns:
+        jetson_utils.cudaImage: The image converted to CUDA format for Jetson inference.
+    """
+    
+    return jetson_utils.cudaFromNumpy(img)
+
+def img_cudaResize(img: np.ndarray, width=300, height=300) -> jetson_utils.cudaImage:
+    """
+    Resize a NumPy ndarray image to a specific width and height using GPU-accelerated CUDA operations.
+
+    Args:
+        img (np.ndarray): The input image as a NumPy array.
+        width (int, optional): Target width of the resized image. Default is 300.
+        height (int, optional): Target height of the resized image. Default is 300.
+
+    Returns:
+        jetson_utils.cudaImage: The resized image in CUDA format.
+    """
+
+    cuda_img_input = get_cudaImgFromNumpy(img)
+
+    cuda_img_resized = jetson_utils.cudaAllocMapped(
+        width=width,
+        height=height,
+        format=cuda_img_input.format
+    )
+    jetson_utils.cudaResize(cuda_img_input, cuda_img_resized)
+
+    return cuda_img_resized
