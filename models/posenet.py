@@ -1,5 +1,5 @@
-import jetson_utils
 import jetson_inference
+from utils.utils import get_cudaImgFromNumpy
 from utils.utils import create_option
 from models.base_model import BaseModel
 
@@ -45,7 +45,8 @@ class posenet(BaseModel):
 
         img_height, img_width = img.shape[:2]
 
-        cuda_img = jetson_utils.cudaFromNumpy(img)
+        cuda_img = get_cudaImgFromNumpy(img)
+        
         poses = self.__net.Process(cuda_img, overlay=self.__overlay)
         
         pose_info = [{
