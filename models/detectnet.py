@@ -1,9 +1,9 @@
 import os
-import cv2
-import jetson_utils
 import jetson_inference
 from utils.utils import create_option
+from utils.utils import img_cudaResize
 from models.base_model import BaseModel
+from utils.utils import get_cudaImgFromNumpy
 
 #DetectNet Class
 class detectnet(BaseModel):
@@ -86,12 +86,15 @@ class detectnet(BaseModel):
 
     def run(self, img):
 
-        if self.is_custom:
-            img = cv2.resize(img, (300,300))
-
         img_height, img_width = img.shape[:2]
 
-        cuda_img = jetson_utils.cudaFromNumpy(img)
+        if self.is_custom:
+            img_width = 300
+            img_height = 300
+            cuda_img = img_cudaResize(img, img_width, img_height)
+
+        else:
+            cuda_img = get_cudaImgFromNumpy(img)
 
         detections = self.__detectnet.Detect(cuda_img, overlay=self.__overlay)
 
