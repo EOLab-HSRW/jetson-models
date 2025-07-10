@@ -1,6 +1,6 @@
 import os
+import io
 import csv
-import cv2
 import sys
 import json
 import gzip
@@ -584,8 +584,8 @@ class ModelManager:
 
                 if model_id in self.running_models and base64_img not in (None, '', 'null'):
                     img_data = base64.b64decode(base64_img)
-                    np_arr = np.frombuffer(img_data, np.uint8)
-                    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                    img_pil = Image.open(io.BytesIO(img_data)).convert("RGB")
+                    img = np.array(img_pil)
                     execution_success = 1
                     outcome_code = 1
                     response = self.running_models[model_id].run(img)
