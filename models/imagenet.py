@@ -1,9 +1,9 @@
 import os
-import cv2
-import jetson_utils
 import jetson_inference
 from utils.utils import create_option
+from utils.utils import img_cudaResize
 from models.base_model import BaseModel
+from utils.utils import get_cudaImgFromNumpy
 
 #ImageNet Class
 class imagenet(BaseModel):
@@ -79,9 +79,9 @@ class imagenet(BaseModel):
     def run(self, img):
 
         if self.is_custom:
-            img = cv2.resize(img, (224,224))
-
-        cuda_img = jetson_utils.cudaFromNumpy(img)
+            cuda_img = img_cudaResize(img, 224, 224)
+        else:
+            cuda_img = get_cudaImgFromNumpy(img)
 
         predictions = self.__imagenet.Classify(cuda_img)
 
