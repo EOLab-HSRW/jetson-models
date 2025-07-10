@@ -1,3 +1,5 @@
+import numpy as np
+from typing import Dict, Any
 from abc import ABC, abstractmethod
 
 #Template Abstract BaseModel
@@ -19,11 +21,11 @@ class BaseModel(ABC):
         pass
 
     @abstractmethod
-    def launch(self, data):
+    def launch(self, data: Dict[str, Any]):
         raise NotImplementedError()
 
     @abstractmethod
-    def run(self, img):
+    def run(self, img: np.ndarray):
         raise NotImplementedError()
     
     @abstractmethod
