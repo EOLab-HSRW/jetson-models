@@ -1,7 +1,9 @@
 import jetson_inference
-from utils.utils import get_cudaImgFromNumpy
 from utils.utils import create_option
 from models.base_model import BaseModel
+from utils.utils import get_str_from_dic
+from utils.utils import get_float_from_dic
+from utils.utils import get_cudaImgFromNumpy
 
 
 class posenet(BaseModel):
@@ -30,10 +32,10 @@ class posenet(BaseModel):
 
     def launch(self, data):
         try:
-            self.__model_name = data["model_name"]
-            self.__variant = data.get("variant_name", "resnet18-body")
-            self.__overlay = data.get("overlay", "none") 
-            self.__threshold = data.get("threshold", 0.15)
+            self.__model_name = get_str_from_dic(data, 'model_name', 'posernet')
+            self.__variant = get_str_from_dic(data, 'variant_name', 'resnet18-body')
+            self.__overlay = get_str_from_dic(data, 'overlay', 'none') 
+            self.__threshold = get_float_from_dic(data, 'threshold', 0.15)
             self.__is_custom = False
             self.__net = jetson_inference.poseNet(self.variant, threshold=self.__threshold)
             return True

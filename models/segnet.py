@@ -6,6 +6,8 @@ from PIL import Image
 import jetson_inference
 from utils.utils import create_option
 from models.base_model import BaseModel
+from utils.utils import get_str_from_dic
+from utils.utils import get_float_from_dic
 
 class segnet(BaseModel):
 
@@ -39,12 +41,12 @@ class segnet(BaseModel):
     def launch(self, data):
         try:
 
-            self.__model_name = data.get('model_name')
-            self.__variant = data.get('variant_name', 'fcn-resnet18-voc')
-            self.__filter_mode = data.get('filter_mode', 'linear')
-            self.__alpha = data.get('alpha', 150.0)
-            self.__ignore_class = data.get('ignore_class', 'void')
-            self.__visualize = data.get('visualize', 'overlay,mask')
+            self.__model_name = get_str_from_dic(data, 'model_name', 'segnet')
+            self.__variant = get_str_from_dic(data, 'variant_name', 'fcn-resnet18-voc')
+            self.__filter_mode = get_str_from_dic(data, 'filter_mode', 'linear')
+            self.__alpha = get_float_from_dic(data, 'alpha', 150.0)
+            self.__ignore_class = get_str_from_dic(data, 'ignore_class', 'void')
+            self.__visualize = get_str_from_dic(data, 'visualize', 'overlay,mask')
             self.__is_custom = False
             self.__segnet = jetson_inference.segNet(self.__variant)
             self.__segnet.SetOverlayAlpha(self.__alpha)

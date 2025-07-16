@@ -3,6 +3,8 @@ import jetson_inference
 from utils.utils import create_option
 from utils.utils import img_cudaResize
 from models.base_model import BaseModel
+from utils.utils import get_str_from_dic
+from utils.utils import get_float_from_dic
 from utils.utils import get_cudaImgFromNumpy
 
 #DetectNet Class
@@ -34,10 +36,10 @@ class detectnet(BaseModel):
     def launch(self, data):
 
         try:
-            self.__model_name = data.get('model_name')
-            self.__variant = data.get('variant_name', "ssd-mobilenet-v2")
-            self.__threshold = data.get('threshold', 0.5)
-            self.__overlay = data.get('overlay', 'box,labels,conf')
+            self.__model_name = get_str_from_dic(data, 'model_name', 'detectnet')
+            self.__variant = get_str_from_dic(data, 'variant_name', 'ssd-mobilenet-v2')
+            self.__threshold = get_float_from_dic(data, 'threshold', 0.5)
+            self.__overlay = get_str_from_dic(data, 'overlay', 'box,labels,conf')
             self.__is_custom = False
             
             # Built-in Jetson-inference model names

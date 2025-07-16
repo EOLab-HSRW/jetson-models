@@ -3,6 +3,8 @@ import jetson_inference
 from utils.utils import create_option
 from utils.utils import img_cudaResize
 from models.base_model import BaseModel
+from utils.utils import get_str_from_dic
+from utils.utils import get_int_from_dic
 from utils.utils import get_cudaImgFromNumpy
 
 #ImageNet Class
@@ -35,9 +37,9 @@ class imagenet(BaseModel):
     def launch(self, data):
 
         try:
-            self.__model_name = data.get('model_name')
-            self.__variant = data.get('variant_name', "googlenet")
-            self.__topK = data.get('topK', 1)
+            self.__model_name = get_str_from_dic(data, 'model_name', 'imagenet')
+            self.__variant = get_str_from_dic(data, 'variant_name', 'googlenet')
+            self.__topK = get_int_from_dic(data, 'topK', 1)
             self.__is_custom = False
 
             # Built-in Jetson-inference model names
