@@ -2,6 +2,7 @@ import os
 import shutil
 import numpy as np
 import jetson_utils
+from typing import Dict, Any
 from collections.abc import Sequence, Mapping, Set
 
 def create_option(typ: type, default: object, help="", options=[]) -> dict:
@@ -59,6 +60,7 @@ def delete_dir(dir_path: str) -> bool:
     Returns:
         Boolean: Returns True if the folder was found and deleted and false in case the folder was not found.
     """
+
     if os.path.exists(dir_path):
         shutil.rmtree(dir_path)
         return True
@@ -101,3 +103,57 @@ def img_cudaResize(img: np.ndarray, width=300, height=300) -> jetson_utils.cudaI
     jetson_utils.cudaResize(cuda_img_input, cuda_img_resized)
 
     return cuda_img_resized
+
+def get_str_from_dic(data: Dict[str, Any], key: str, default: str) -> str:
+    """
+    Retrieve a string value from a dictionary, converting the result if necessary.
+
+    Args:
+        data (Dict[str, Any]): A dictionary.
+        key (str): The key to look for in the dictionary.
+        default (str): The default string to return if the key is missing.
+
+    Returns:
+        str: The corresponding value as a string, or the default if the key is not found.
+    """
+
+    if key in data: return str(data[key])
+
+    return default 
+
+def get_int_from_dic(data: Dict[str, Any], key: str, default: int) -> int:
+    """
+    Retrieve an integer value from a dictionary, converting the result if necessary.
+
+    Args:
+        data (Dict[str, Any]): A dictionary.
+        key (str): The key to look for in the dictionary.
+        default (int): The default integer to return if the key is missing.
+
+    Returns:
+        int: The corresponding value converted to an integer, or the default if the key is not found.
+    """
+
+    if key in data: return int(data[key])
+
+    return default
+
+def get_float_from_dic(data: Dict[str, Any], key: str, default: float) -> float:
+    """
+    Retrieve a float value from a dictionary, converting the result if necessary.
+
+    Args:
+        data (Dict[str, Any]): A dictionary.
+        key (str): The key to look for in the dictionary.
+        default (int): The default float to return if the key is missing.
+
+    Returns:
+        float: The corresponding value converted to a float, or the default if conversion fails or the key is missing.
+    """
+
+    try:
+        if key in data: return float(data[key])
+
+        return default
+    except (ValueError, TypeError):
+        return default
