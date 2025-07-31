@@ -45,6 +45,7 @@ class ModelManager:
 
     #Global variables
     log_file = ""
+    ws_user_ip = ""
 
 #region Constructor
     def __init__(self) -> None:
@@ -335,7 +336,7 @@ class ModelManager:
         fieldnames = [
             "Command", "Model_Name", "Variant_Name",
             "Start_Timestamp", "End_Timestamp", "Duration_Seconds",
-            "Execution_Success", "Outcome_Code"
+            "Execution_Success", "Outcome_Code", "User_IP"
         ]
         while True:
             log_data = await self.log_queue.get()
@@ -368,8 +369,8 @@ class ModelManager:
             loop.create_task(self.log_writer())
 
             #Set the host ip
-            host = "0.0.0.0"
-            port = 5000
+            host = args.ip
+            port = args.port
 
             # Start the WebSocket server
             self.server = await websockets.serve(
@@ -425,9 +426,13 @@ class ModelManager:
                     return
 
                 command = data["command"]
+
+                remote_ip, remote_port = websocket.remote_address
+                global ws_user_ip
+                ws_user_ip = remote_ip
             
                 # Print the message received from the client
-                print(f"[INFO] Message received from client {websocket.remote_address}: " "with the command: " f"{command}")
+                print(f"[INFO] Message received from client {remote_ip}:{remote_port} : " "with the command: " f"{command}")
 
                 if command == "/models":
                     await self.get_models(websocket, data, args)
@@ -531,6 +536,7 @@ class ModelManager:
             return
         finally:
             if args.debug:
+                global ws_user_ip
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
@@ -544,6 +550,7 @@ class ModelManager:
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
                     "Outcome_Code": outcome_code,
+                    "User_IP": ws_user_ip,
                 }
 
                 try:
@@ -607,6 +614,7 @@ class ModelManager:
 
         finally:
             if args.debug:
+                global ws_user_ip
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
@@ -628,6 +636,7 @@ class ModelManager:
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
                     "Outcome_Code": outcome_code,
+                    "User_IP": ws_user_ip,
                 }
 
                 try:
@@ -740,6 +749,7 @@ class ModelManager:
 
         finally:
             if args.debug:
+                global ws_user_ip
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
@@ -753,6 +763,7 @@ class ModelManager:
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
                     "Outcome_Code": outcome_code,
+                    "User_IP": ws_user_ip,
                 }
 
                 try:
@@ -803,6 +814,7 @@ class ModelManager:
             await websocket.send(json.dumps(response))
         finally:
            if args.debug:
+                global ws_user_ip
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
@@ -816,6 +828,7 @@ class ModelManager:
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
                     "Outcome_Code": outcome_code,
+                    "User_IP": ws_user_ip,
                 }
 
                 try:
@@ -869,6 +882,7 @@ class ModelManager:
             await websocket.send(json.dumps(response))
         finally:
             if args.debug:
+                global ws_user_ip
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
@@ -882,6 +896,7 @@ class ModelManager:
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
                     "Outcome_Code": outcome_code,
+                    "User_IP": ws_user_ip,
                 }
 
                 try:
@@ -935,6 +950,7 @@ class ModelManager:
 
         finally:
             if args.debug:
+                global ws_user_ip
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
@@ -948,6 +964,7 @@ class ModelManager:
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
                     "Outcome_Code": outcome_code,
+                    "User_IP": ws_user_ip,
                 }
 
                 try:
@@ -1192,6 +1209,7 @@ class ModelManager:
             await websocket.send(json.dumps(-1))    
         finally:
             if args.debug:
+                global ws_user_ip
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
@@ -1205,6 +1223,7 @@ class ModelManager:
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
                     "Outcome_Code": outcome_code,
+                    "User_IP": ws_user_ip,
                 }
 
                 try:
@@ -1636,6 +1655,7 @@ class ModelManager:
             await websocket.send(json.dumps(-1))
         finally:
             if args.debug:
+                global ws_user_ip
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
@@ -1649,6 +1669,7 @@ class ModelManager:
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
                     "Outcome_Code": outcome_code,
+                    "User_IP": ws_user_ip,
                 }
 
                 try:
@@ -1728,6 +1749,7 @@ class ModelManager:
             await websocket.send(json.dumps(-1))
         finally:
             if args.debug:
+                global ws_user_ip
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
@@ -1741,6 +1763,7 @@ class ModelManager:
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
                     "Outcome_Code": outcome_code,
+                    "User_IP": ws_user_ip,
                 }
 
                 try:

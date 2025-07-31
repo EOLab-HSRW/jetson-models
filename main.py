@@ -15,6 +15,13 @@ parser.add_argument("--debug", type=bool, default=False,
 parser.add_argument("--delete-datasets", type=bool, default=False,
                     help='Specify if the server will delete all the created datasets after the server is closed')
 
+#Params for WebSocket
+parser.add_argument("--ip", type=str, default="127.0.0.1",
+                    help='Specify the ip address where the device is connected')
+
+parser.add_argument("--port", type=int, default=5000,
+                    help='Specify the port of the connection')
+
 args = parser.parse_args()
 
 manager = ModelManager()
