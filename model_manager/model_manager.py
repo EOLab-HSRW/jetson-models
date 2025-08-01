@@ -12,7 +12,6 @@ import asyncio
 import argparse
 import importlib
 import websockets
-import subprocess
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -51,16 +50,13 @@ class ModelManager:
     def __init__(self) -> None:
         self.running_models: Dict[int, BaseModel] = {}
         self.log_queue = asyncio.Queue()
+        self.model_lock = asyncio.Lock()
 #endregion
 
 #region Model Manager Methods
 
     def set_model_id(self) -> int:
         """Generate a unique model ID."""
-
-        #First process id = 1000
-        if len(self.running_models) == 0:
-            return 1000
         
         current_id = 1000
 
@@ -508,8 +504,13 @@ class ModelManager:
                 success = model_instance.launch(data)
 
                 if success:
-                    model_id = self.set_model_id()
-                    self.running_models[model_id] = model_instance
+                    #model_id = self.set_model_id()
+                    #self.running_models[model_id] = model_instance
+                    
+                    async with self.model_lock:
+                        model_id = self.set_model_id()
+                        self.running_models[model_id] = model_instance
+                    
                     variant_name = model_instance.variant
                     execution_success = 1
                     outcome_code = 1
@@ -595,7 +596,13 @@ class ModelManager:
                     img = np.array(img_pil)
                     execution_success = 1
                     outcome_code = 1
-                    response = self.running_models[model_id].run(img)
+
+                    async with self.model_lock:
+                        model = self.running_models.get(model_id)
+
+                    loop = asyncio.get_event_loop()
+                    response = await loop.run_in_executor(None, model.run, img)
+
                 else:
                     print(f"[WARN] No model is currently running with the model_id: {model_id}")
                     execution_success = 0
@@ -679,59 +686,62 @@ class ModelManager:
                 model_id = data['model_id']
 
                 if isinstance(model_id, str) and model_id.lower() == "all":
-                    for id in self.running_models:
-                        stopped_models.append(id)
-                        stopped_models_names.append(self.running_models[id].model_name)
-                        stopped_variants.append(self.running_models[id].variant)
-                        self.running_models[id].stop()
-                    self.running_models.clear()
-                    print("[INFO] All the models have been stopped successfully")
-                    execution_success = 1
-                    outcome_code = 1
-                    response = stopped_models
+                    async with self.model_lock:
+                        for id in self.running_models:
+                            stopped_models.append(id)
+                            stopped_models_names.append(self.running_models[id].model_name)
+                            stopped_variants.append(self.running_models[id].variant)
+                            self.running_models[id].stop()
+                        self.running_models.clear()
+                        print("[INFO] All the models have been stopped successfully")
+                        execution_success = 1
+                        outcome_code = 1
+                        response = stopped_models
 
                 elif isinstance(model_id, int):
                     model_id = int(model_id)
-                    if model_id in self.running_models:
-                        model_name = self.running_models[model_id].model_name
-                        execution_success = 1
-                        outcome_code = 1
-                        response = model_id
-                        stopped_models_names.append(self.running_models[model_id].model_name)
-                        stopped_variants.append(self.running_models[model_id].variant)
-                        stopped_models.append(model_id)
-                        self.running_models[model_id].stop()
-                        del self.running_models[model_id]
-                        print(f"[INFO] Model: {model_name} with the model_id: {model_id} has been stopped successfully")
-                    else:
-                        print(f"[WARN] There is no model with the model_id: {model_id}")
-                        execution_success = 0
-                        outcome_code = 0
-                        response = 0
+                    async with self.model_lock:
+                        if model_id in self.running_models:
+                            model_name = self.running_models[model_id].model_name
+                            execution_success = 1
+                            outcome_code = 1
+                            response = model_id
+                            stopped_models_names.append(self.running_models[model_id].model_name)
+                            stopped_variants.append(self.running_models[model_id].variant)
+                            stopped_models.append(model_id)
+                            self.running_models[model_id].stop()
+                            del self.running_models[model_id]
+                            print(f"[INFO] Model: {model_name} with the model_id: {model_id} has been stopped successfully")
+                        else:
+                            print(f"[WARN] There is no model with the model_id: {model_id}")
+                            execution_success = 0
+                            outcome_code = 0
+                            response = 0
 
                 elif isinstance(model_id, list):
 
                     for id in model_id:
                         model_id = int(id)
 
-                        if model_id in self.running_models:
-                            model_name = self.running_models[model_id].model_name
-                            variant_name = self.running_models[model_id].variant
-                            stopped_models.append(model_id)
-                            stopped_models_names.append(model_name)
-                            stopped_variants.append(variant_name)
-                            self.running_models[model_id].stop()
-                            del self.running_models[model_id]
-                            execution_success = 1
-                            outcome_code = 1
-                            response = stopped_models
-                            print(f"[INFO] Model: {model_name} with variant {variant_name} and with the model_id {model_id} has been stopped successfully")
+                        async with self.model_lock:
+                            if model_id in self.running_models:
+                                model_name = self.running_models[model_id].model_name
+                                variant_name = self.running_models[model_id].variant
+                                stopped_models.append(model_id)
+                                stopped_models_names.append(model_name)
+                                stopped_variants.append(variant_name)
+                                self.running_models[model_id].stop()
+                                del self.running_models[model_id]
+                                execution_success = 1
+                                outcome_code = 1
+                                response = stopped_models
+                                print(f"[INFO] Model: {model_name} with variant {variant_name} and with the model_id {model_id} has been stopped successfully")
 
-                        else:
-                            execution_success = 0
-                            outcome_code = 0
-                            response = 0
-                            print(f"[WARN] There is no model with the model_id: {model_id}")
+                            else:
+                                execution_success = 0
+                                outcome_code = 0
+                                response = 0
+                                print(f"[WARN] There is no model with the model_id: {model_id}")
 
                 else:
                     print(f"[ERROR] Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list.")
@@ -798,8 +808,8 @@ class ModelManager:
 
                 models = []
 
-                for id in sorted(self.running_models.keys()):
-                    models.append(id)
+                async with self.model_lock:
+                    models = sorted(self.running_models.keys())
 
                 execution_success  = 1
                 outcome_code  = 1
@@ -1412,18 +1422,16 @@ class ModelManager:
 
                 try:
                     print("[INFO] Launching training subprocess...")
-                    process = subprocess.Popen(
-                        command_train,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        universal_newlines=True,
-                        bufsize=1
+                    process = await asyncio.create_subprocess_exec(
+                        *command_train,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT
                     )
 
-                    for line in process.stdout:
-                        print("[TRAIN]", line.strip())
+                    async for line in process.stdout:
+                        print("[TRAIN]", line.decode().strip())
 
-                    process.wait()
+                    await process.wait()
 
                     if process.returncode != 0:
                         print(f"[ERROR] Training failed with exit code {process.returncode}")
@@ -1450,18 +1458,16 @@ class ModelManager:
 
                 try:
                     print("[INFO] Exporting model subprocess...")
-                    process = subprocess.Popen(
-                        command_export,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        universal_newlines=True,
-                        bufsize=1
+                    process = await asyncio.create_subprocess_exec(
+                        *command_export,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT
                     )
 
-                    for line in process.stdout:
-                        print("[EXPORT]", line.strip())
+                    async for line in process.stdout:
+                        print("[EXPORT]", line.decode().strip())
 
-                    process.wait()
+                    await process.wait()
 
                     if process.returncode != 0:
                         print(f"[ERROR] Export failed with exit code {process.returncode}")
@@ -1561,18 +1567,16 @@ class ModelManager:
 
                 try:
                     print("[INFO] Launching imagenet training subprocess...")
-                    process = subprocess.Popen(
-                        command_train,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        universal_newlines=True,
-                        bufsize=1
+                    process = await asyncio.create_subprocess_exec(
+                        *command_train,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT
                     )
 
-                    for line in process.stdout:
-                        print("[TRAIN]", line.strip())
+                    async for line in process.stdout:
+                        print("[TRAIN]", line.decode().strip())
 
-                    process.wait()
+                    await process.wait()
 
                     if process.returncode != 0:
                         print(f"[ERROR] Training failed with exit code {process.returncode}")
@@ -1591,18 +1595,16 @@ class ModelManager:
 
                     try:
                         print("[INFO] Exporting model subprocess...")
-                        process = subprocess.Popen(
-                            command_export,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT,
-                            universal_newlines=True,
-                            bufsize=1
+                        process = await asyncio.create_subprocess_exec(
+                            *command_export,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.STDOUT
                         )
 
-                        for line in process.stdout:
-                            print("[EXPORT]", line.strip())
+                        async for line in process.stdout:
+                            print("[EXPORT]", line.decode().strip())
 
-                        process.wait()
+                        await process.wait()
 
                         if process.returncode != 0:
                             print(f"[ERROR] Export failed with exit code {process.returncode}")
