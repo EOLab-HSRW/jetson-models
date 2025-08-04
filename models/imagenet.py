@@ -5,6 +5,7 @@ from utils.utils import img_cudaResize
 from models.base_model import BaseModel
 from utils.utils import get_str_from_dic
 from utils.utils import get_int_from_dic
+from utils.utils import BASE_NETWORKS_DIR
 from utils.utils import get_cudaImgFromNumpy
 
 #ImageNet Class
@@ -52,7 +53,7 @@ class imagenet(BaseModel):
                 self.__imagenet = jetson_inference.imageNet(self.__variant)
             else:
                 # Try to load custom ONNX model
-                model_dir = os.path.join("/usr/local/bin/networks", self.__variant)
+                model_dir = os.path.join(BASE_NETWORKS_DIR, self.__variant)
                 onnx_path = os.path.join(model_dir, f"{self.__variant}.onnx")
                 labels_path = os.path.join(model_dir, f"{self.__variant}_labels.txt")
 
