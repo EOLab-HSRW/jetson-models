@@ -5,6 +5,8 @@ import jetson_utils
 from typing import Dict, Any
 from collections.abc import Sequence, Mapping, Set
 
+BASE_NETWORKS_DIR = "/usr/local/bin/networks" 
+
 def create_option(typ: type, default: object, help="", options=[]) -> dict:
 
     """
