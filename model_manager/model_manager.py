@@ -23,6 +23,7 @@ from pycocotools.coco import COCO
 from utils.utils import delete_dir
 import xml.etree.ElementTree as ET
 from models.base_model import BaseModel
+from utils.utils import BASE_NETWORKS_DIR
 
 # Dynamically added the submodule path
 sys.path.append(os.path.abspath("vendor/pytorch-ssd"))
@@ -34,9 +35,6 @@ from vision.datasets.voc_dataset import VOCDataset
 from vision.ssd.config import mobilenetv1_ssd_config
 from vision.datasets.open_images import OpenImagesDataset
 from vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
-
-#Const variables
-BASE_NETWORKS_DIR = "/usr/local/bin/networks"   
 
 #from train import main
 
