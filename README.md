@@ -4,19 +4,13 @@
   <img src="https://github.com/user-attachments/assets/c9056f44-5639-41bb-b2b1-2473cf0680e9" alt="Jetson X Snap!" />
 </p>
 
-## Overview
+## Deploying Deep Learning for Everyone
 
-This repository provides a Python-based model manager designed for running AI inference models on a Jetson device. It leverages NVIDIA's [`Jetson Inference Library`](https://github.com/dusty-nv/jetson-inference) to manage deep learning models efficiently. Additionally, the manager sets up a WebSocket server, enabling remote clients to interact with the models and send images for real-time inference.
+This repository provides a Python-based model manager designed for running AI inference models on a Jetson device. It leverages NVIDIA's [Jetson Inference Library](https://github.com/dusty-nv/jetson-inference) to manage deep learning models efficiently. Additionally, the manager sets up a WebSocket server, enabling remote clients to interact with the models and send images for real-time inference.
 
-While the main objective is to facilitate model interaction through [Snap!](https://snap.berkeley.edu/), a block-based programming language for educational and demonstrative purposes, the manager also supports connectivity from any programming language that supports WebSocket communication. This makes it highly flexible for various applications.
+The main objective is to facilitate model interaction through [Snap!](https://snap.berkeley.edu/), a block-based programming language for educational and demonstrative purposes, the manager also supports connectivity from any programming language that supports WebSocket communication.
 
-### Features:
-- Simplifies the management and execution of AI models on Jetson devices.
-- Supports remote interaction via WebSocket.
-- Enables real-time inference with various deep learning models.
-- Optimized for educational and research environments.
-
-🔗 **Snap! to the `js` Extension Link:** [`https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js`](https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js)
+🔗 **Snap! to the `js` Extension Link:** [https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js](https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js)
 
 ---
 
@@ -120,55 +114,42 @@ pip install -r requirements.txt
 
 ### 1. Configure the WebSocket Server
 
-Before running the model manager, update the **host IP** in the **start_server** function located inside the `model_manager.py` file.
-
-* Open the file:
+To configure and start the WebSocket server by running `main.py` with optional arguments:
 
 ```bash
-cd model_manager/model_manager.py
+python3 main.py --ip=127.0.0.1 --port=5000 --delete_datasets=False --debug=False
 ```
 
-* Locate the function `start_server` and modify the **host** variable with your Jetson device IP:
+#### Parameters
 
-```python
-async def start_server(self) -> None:
-    """Start the WebSocket server"""
+| Argument                     | Description                                                         | Default   |
+|------------------------------|:-------------------------------------------------------------------:|:---------:|
+| **--ip** (str)               | IP address where the Jetson device is reachable on your network.    | 127.0.0.1 |
+| **--port** (int)             | Port used for WebSocket communication.                              | 5000      |
+| **--delete_datasets** (bool) | If True, deletes all created datasets before the server shuts down. | False     |
+| **--debug** (bool)           | Enables detailed logging for tracing system interactions.           | False     |
 
-    print("WebSocket server is starting...")
-    try:
-        # Set the host IP
-        host = "0.0.0.0"  # Change this to your desired Jetson IP
-        port = 5000
+*All arguments are optional; the defaults will be used if they’re not provided.*
 
-        # Start the WebSocket server
-        self.server = await websockets.serve(self.handle_client, host, port)
-        print(f"Server running on ws://{host}:{port}")    
-        await self.server.wait_closed()
-        
-    except Exception as e:
-        print(f"Error starting the server: {e}")
-    finally:
-        print("Server shutdown.")
+## Inference with Snap!
+
+To use the full capabilities of the Model Manager, you'll need to download the [customs Snap! blocks!](https://github.com/EOLab-HSRW/jetson-models/tree/main/snap_blocks) These blocks are currently available in English and Spanish. 
+
+### Setup Instruncions
+
+### 1. Download the Snap! GitHub Project
+Clone or download the [Snap! GitHub Project](https://github.com/jmoenig/Snap)
+
+```bash
+git clone https://github.com/jmoenig/Snap.git
 ```
 
-Make sure to replace "0.0.0.0" with the actual IP address where you want the server to be accessible.
+*While Snap! can run from its official website, it cannot connect via WebSocket due to security restrictions. The online version uses HTTPS, which blocks non-secure WebSocket (ws://) connections.*
 
-### 2. Start the Model Manager
+### 2. Run Snap! Locally
 
-Once the host IP is set, execute the main.py file to start the model manager:
+After downloading, open the `snap.html` file from the project folder in your browser.
 
-```sh
-python3 main.py
-```
+### 3. Import the Custom Blocks
 
-### 3.  Connect to the WebSocket Server
-
-* The server will be accessible at:
-
-```python3
-uri = "ws://<YOUR_HOST_IP>:5000"
-websocket = await websockets.connect(uri)
-```
-
-* You can connect to the server using any WebSocket-compatible client.
-* If using Snap!, ensure to use the **link to** block.
+Load the downloaded Snap! blocks into your local Snap! session.
