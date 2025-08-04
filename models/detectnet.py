@@ -4,6 +4,7 @@ from utils.utils import create_option
 from utils.utils import img_cudaResize
 from models.base_model import BaseModel
 from utils.utils import get_str_from_dic
+from utils.utils import BASE_NETWORKS_DIR
 from utils.utils import get_float_from_dic
 from utils.utils import get_cudaImgFromNumpy
 
@@ -45,19 +46,34 @@ class detectnet(BaseModel):
             # Built-in Jetson-inference model names
             predefined_models = [
                 "ssd-mobilenet-v1", "ssd-mobilenet-v2", "ssd-inception-v2",
-                "peoplenet", "peoplenet-pruned", "dashcamnet", "trafficcamnet", "facedetect"
+                "peoplenet", "peoplenet-pruned", "dashcamnet", "trafficcamnet", 
+                "facedetect", "coco-dog", "coco-bottle", "coco-chair", "coco-airplane", 
+                "facenet", "pednet", "multiped"
             ]
 
             if self.__variant in predefined_models:
+
                 print(f"[INFO] Launching built-in model: {self.__variant}")
-                self.__detectnet = jetson_inference.detectNet(
-                    network=self.__variant,
-                    threshold=self.__threshold
-                )
+
+                if self.variant == "ssd-mobilenet-v1":
+                    self.__detectnet = jetson_inference.detectNet(
+                        model= os.path.join(BASE_NETWORKS_DIR, "SSD-Mobilenet-v1/ssd_mobilenet_v1_coco.uff"),
+                        input_blob="Input",
+                        output_cvg="Postprocessor",
+                        output_bbox="Postprocessor_1",
+                        labels=os.path.join(BASE_NETWORKS_DIR, "SSD-Mobilenet-v1/ssd_coco_labels.txt"),
+                        threshold=self.__threshold
+                    )
+                else:
+                    self.__detectnet = jetson_inference.detectNet(
+                        network=self.__variant,
+                        threshold=self.__threshold
+                    )
 
             else:
+
                 # Try to load custom ONNX model
-                model_dir = os.path.join("/usr/local/bin/networks", self.__variant)
+                model_dir = os.path.join(BASE_NETWORKS_DIR, self.__variant)
                 onnx_path = os.path.join(model_dir, f"{self.__variant}.onnx")
                 labels_path = os.path.join(model_dir, f"{self.__variant}_labels.txt")
 
@@ -128,7 +144,10 @@ class detectnet(BaseModel):
                     typ = str,
                     default= "ssd-mobilenet-v2",
                     help="pre-trained model to load",
-                    options=["ssd-mobilenet-v1", "ssd-mobilenet-v2", "ssd-inception-v2", "peoplenet", "peoplenet-pruned", "dashcamnet", "trafficcamnet", "facedetect"]
+                    options=["ssd-mobilenet-v1", "ssd-mobilenet-v2", "ssd-inception-v2",
+                             "peoplenet", "peoplenet-pruned", "dashcamnet", "trafficcamnet", 
+                             "facedetect", "coco-dog", "coco-bottle", "coco-chair", "coco-airplane", 
+                             "facenet", "pednet", "multiped"]
                 ),
                 "overlay": create_option(
                     typ = str,
