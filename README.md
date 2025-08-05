@@ -137,8 +137,7 @@ To use the full capabilities of the Model Manager, you'll need to download the [
 
 ### Setup Instruncions
 
-* Download the Snap! GitHub Project
-Clone or download the [Snap! GitHub Project](https://github.com/jmoenig/Snap)
+* **Download or clone the [Snap! GitHub Project](https://github.com/jmoenig/Snap)**
 
 ```bash
 git clone https://github.com/jmoenig/Snap.git
@@ -146,10 +145,11 @@ git clone https://github.com/jmoenig/Snap.git
 
 *While Snap! can run from its official website, it cannot connect via WebSocket due to security restrictions. The online version uses HTTPS, which blocks non-secure WebSocket (ws://) connections.*
 
-* Run Snap! Locally
+* **Run Snap! Locally**
 
 After downloading, open the `snap.html` file from the project folder in your browser.
-* Import the Custom Blocks
+
+* **Import the Custom Blocks**
 
 Load the downloaded Snap! blocks into your local Snap! session.
 
@@ -174,15 +174,17 @@ By using the connect to Jetson block you have to provide the IP and the port of 
 
 Once connected using the `connect to Jetson` block, you can launch a detection model using the `send msg to socket with response` block. This block returns a model ID `(e.g., 1000)`, which is used to reference the launched model instance.
 
-* ** Launch a Object Detection Model - detectnet**
+### Launch models
+
+#### Launch a Object Detection Model - `detectnet`
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/22580a60-f0ba-44c9-9c24-33ab439e2801" alt="Launch DetectNet Model" />
 </p>
 
-Use the Snap! JSON extension blocks to construct the appropriate JSON request.
+*Use the Snap! JSON extension blocks to construct the appropriate JSON request.*
 
-#### JSON Payload Structure for /models/launch
+#### JSON Payload Structure for detectnet /models/launch
 
 The `send msg to socket with response` block expects a JSON object like this:
 
@@ -228,4 +230,147 @@ The `send msg to socket with response` block expects a JSON object like this:
 | multiped-500               | multiped                 |
 | facenet-120                | facenet                  |
 
-###
+#### Launch a Image Recognition Model - `imagenet`
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/1d198b37-04aa-4bcd-a55d-f1b00ea68fc4" alt="Launch ImageNet Model" />
+</p>
+
+*Use the Snap! JSON extension blocks to construct the appropriate JSON request.*
+
+#### JSON Payload Structure for imagenet /models/launch
+
+The `send msg to socket with response` block expects a JSON object like this:
+
+```json
+{
+  "command": "/models/launch",
+  "model_name": "imagenet",
+  "variant_name": "alexnet",
+  "topK": 2
+}
+```
+
+#### JSON Argument Reference
+
+| Key          | Type    | Required  | Default   |
+|:-------------|:--------|:----------|:----------|
+| command      | string  | Yes       | —         |
+| model_name   | string  | Yes       | —         |
+| variant_name | string  | No        | googlenet |
+| topK         | Integer | No        | 1         |
+
+*You can omit optional fields if you're happy with the defaults. However, specifying them gives more control.*
+
+#### Available Image Recognition Variants
+
+| Variant             | variant_name Argument   |
+|:--------------------|:------------------------|
+| AlexNet             | alexnet                 |
+| GoogleNet (Default) | googlenet	              | 
+| GoogleNet-12        | googlenet-12            |
+| ResNet-18           | resnet-18               |
+| ResNet-50           | resnet-50               |
+| ResNet-101          | resnet-101	            | 
+| ResNet-152          | resnet-152              |
+| VGG-16              | vgg-16	                |
+| VGG-19              | vgg-19		              | 
+| Inception-v4        | inception-v4            |
+
+#### Launch a Segmentation Model - `segnet`
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/5d8402ff-b00e-4db8-81b6-7098964608f5" alt="Launch SegNet Model" />
+</p>
+
+
+*Use the Snap! JSON extension blocks to construct the appropriate JSON request.*
+
+#### JSON Payload Structure for segnet /models/launch
+
+The `send msg to socket with response` block expects a JSON object like this:
+
+```json
+{
+  "command": "/models/launch",
+  "model_name": "segnet",
+  "variant_name": "fcn-resnet18-cityscapes-512x256",
+  "filter_mode": "point",
+  "alpha": 155.5,
+  "ignore_class": "void",
+  "visualize": "overlay,mask"
+}
+```
+
+#### JSON Argument Reference
+
+| Key          | Type    | Required  | Default                  |
+|:-------------|:--------|:----------|:-------------------------|
+| command      | string  | Yes       | —                        |
+| model_name   | string  | Yes       | —                        |
+| variant_name | string  | No        | fcn-resnet18-voc-320x320 |
+| filter_mode  | string  | No        | linear                   |
+| alpha        | float   | No        | 150.0                    |
+| ignore_class | string  | No        | void                     |
+| visualize    | string  | No        | overlay,mask             |
+
+*You can omit optional fields if you're happy with the defaults. However, specifying them gives more control.*
+
+#### Available Segmentation Variants
+
+| Dataset                                                             | variant_name Argument             |
+|:--------------------------------------------------------------------|:----------------------------------|
+| [Cityscapes](https://www.cityscapes-dataset.com/)                   | fcn-resnet18-cityscapes-512x256   |
+| [Cityscapes](https://www.cityscapes-dataset.com/)                   | fcn-resnet18-cityscapes-1024x512	| 
+| [Cityscapes](https://www.cityscapes-dataset.com/)                   | fcn-resnet18-cityscapes-2048x1024 |
+| [DeepScene](https://deepscene.cs.uni-freiburg.de/)                  | fcn-resnet18-deepscene-576x320    |
+| [DeepScene](https://deepscene.cs.uni-freiburg.de/)                  | fcn-resnet18-deepscene-864x480    |
+| [Multi-Human](https://lv-mhp.github.io/)                            | fcn-resnet18-mhp-512x320          | 
+| [Multi-Human](https://lv-mhp.github.io/)                            | fcn-resnet18-mhp-512x320          |
+| [Pascal VOC](https://github.com/paperswithcode/paperswithcode-data) | fcn-resnet18-voc-320x320	        |
+| [Pascal VOC](https://github.com/paperswithcode/paperswithcode-data) | fcn-resnet18-voc-512x320		      | 
+| [SUN RGB-D](https://rgbd.cs.princeton.edu/)                         | fcn-resnet18-sun-512x400          |
+| [SUN RGB-D](https://rgbd.cs.princeton.edu/)                         | inception-v4                      |
+
+
+#### Launch a Pose Estimation Model - `posenet`
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/38ffff35-7612-45b2-925a-baff2f6cb697" alt="Launch PoseNet Model" />
+</p>
+
+*Use the Snap! JSON extension blocks to construct the appropriate JSON request.*
+
+#### JSON Payload Structure for posenet /models/launch
+
+The `send msg to socket with response` block expects a JSON object like this:
+
+```json
+{
+  "command": "/models/launch",
+  "model_name": "posenet",
+  "variant_name": "resnet18-body",
+  "overlay": "none",
+  "threshold": 0.15
+}
+```
+
+#### JSON Argument Reference
+
+| Key          | Type    | Required  | Default       |
+|:-------------|:--------|:----------|:--------------|
+| command      | string  | Yes       | —             |
+| model_name   | string  | Yes       | —             |
+| variant_name | string  | No        | resnet18-body |
+| overlay      | string  | No        | none          |
+| threshold    | float   | No        | 0.15          |
+
+*You can omit optional fields if you're happy with the defaults. However, specifying them gives more control.*
+
+#### Available Pose Estimation Variants
+
+| Variant                       | variant_name Argument   |
+|:------------------------------|:------------------------|
+| Pose-ResNet18-Body (Default)  | resnet18-body           |
+| Pose-ResNet18-Hand            | resnet18-hand	          | 
+| Pose-DenseNet121-Body         | densenet121-body        |
