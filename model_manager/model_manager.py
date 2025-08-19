@@ -502,8 +502,6 @@ class ModelManager:
                 success = model_instance.launch(data)
 
                 if success:
-                    #model_id = self.set_model_id()
-                    #self.running_models[model_id] = model_instance
                     
                     async with self.model_lock:
                         model_id = self.set_model_id()
@@ -674,7 +672,7 @@ class ModelManager:
         
         try:
 
-            if len(self.running_models) == 0: 
+            if not self.running_models: 
                 print("[WARN] No model is running...")
                 execution_success = 0
                 outcome_code = 0
@@ -718,11 +716,15 @@ class ModelManager:
 
                 elif isinstance(model_id, list):
 
-                    for id in model_id:
-                        model_id = int(id)
+                    found_any = False
 
-                        async with self.model_lock:
+                    async with self.model_lock:
+
+                        for id in model_id:
+                            model_id = int(id)
+
                             if model_id in self.running_models:
+                                found_any = True
                                 model_name = self.running_models[model_id].model_name
                                 variant_name = self.running_models[model_id].variant
                                 stopped_models.append(model_id)
@@ -730,22 +732,24 @@ class ModelManager:
                                 stopped_variants.append(variant_name)
                                 self.running_models[model_id].stop()
                                 del self.running_models[model_id]
-                                execution_success = 1
-                                outcome_code = 1
-                                response = stopped_models
-                                print(f"[INFO] Model: {model_name} with variant {variant_name} and with the model_id {model_id} has been stopped successfully")
-
+                                print(f"[INFO] Model: {model_name} with variant: {variant_name} and with model_id: {model_id} has been stopped successfully")
                             else:
-                                execution_success = 0
-                                outcome_code = 0
-                                response = 0
-                                print(f"[WARN] There is no model with the model_id: {model_id}")
+                                print(f"[INFO] There is no model with the model_id: {model_id}")
+
+                    if found_any:
+                        execution_success = 1
+                        outcome_code = 1
+                        response = stopped_models
+                    else:
+                        execution_success = 0
+                        outcome_code = 0
+                        response = 0
 
                 else:
                     print(f"[ERROR] Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list.")
                     execution_success = 0
-                    outcome_code = -1
-                    response = -1
+                    outcome_code = 0
+                    response = 0
 
             await websocket.send(json.dumps(response))
         except Exception as e:
@@ -797,7 +801,7 @@ class ModelManager:
 
         try:
 
-            if  len(self.running_models) == 0:
+            if not self.running_models:
                 print("[WARN] No model is running...")
                 execution_success  = 0
                 outcome_code  = 0
@@ -929,7 +933,7 @@ class ModelManager:
 
         try:
 
-            if  len(self.running_models) == 0:
+            if not self.running_models:
                 print("[WARN] No model is running...")
                 execution_success  = 0
                 outcome_code  = 0
