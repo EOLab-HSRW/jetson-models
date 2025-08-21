@@ -56,25 +56,25 @@ The `send msg to socket with response` block expects a JSON object like this:
 
 *You can omit the fields that are not required if you're happy with the defaults. However, specifying them gives more control.*
 
-### Available Object Detection Variants
+### Available Object Detection Variants and Average Performance in Jetson Nano
 
-| Variant                    | variant_name Argument    |
-|:---------------------------|:-------------------------|
-| SSD-Mobilenet-v1           | ssd-mobilenet-v1         |
-| SSD-Mobilenet-v2 (Default) | ssd-mobilenet-v2	        | 
-| SSD-Inception-v2           | ssd-inception-v2         |
-| TAO PeopleNet              | peoplenet                |
-| TAO PeopleNet (pruned)     | peoplenet-pruned         |
-| TAO DashCamNet             | dashcamnet	              | 
-| TAO TrafficCamNet          | trafficcamnet            |
-| TAO FaceDetect             | facedetect               |
-| DetectNet-COCO-Dog         | coco-dog	                | 
-| DetectNet-COCO-Bottle      | coco-bottle              |
-| DetectNet-COCO-Chair       | coco-chair               |
-| DetectNet-COCO-Airplane    | coco-airplane            |
-| ped-100                    | pednet	                  | 
-| multiped-500               | multiped                 |
-| facenet-120                | facenet                  |
+| Variant                    | variant_name Argument    | Jetson Nano |
+|:---------------------------|:-------------------------|:------------|
+| SSD-Mobilenet-v1           | ssd-mobilenet-v1         | 21 FPS      |
+| SSD-Mobilenet-v2 (Default) | ssd-mobilenet-v2	        | 18 FPS      |
+| SSD-Inception-v2           | ssd-inception-v2         | 15 FPS      |
+| TAO PeopleNet              | peoplenet                | 3 FPS       |
+| TAO PeopleNet (pruned)     | peoplenet-pruned         | 9 FPS       |
+| TAO DashCamNet             | dashcamnet	              | 12 FPS      |
+| TAO TrafficCamNet          | trafficcamnet            | 13 FPS      |
+| TAO FaceDetect             | facedetect               | 17 FPS      |
+| DetectNet-COCO-Dog         | coco-dog	                | 9 FPS       |
+| DetectNet-COCO-Bottle      | coco-bottle              | 8 FPS       |
+| DetectNet-COCO-Chair       | coco-chair               | 8 FPS       |
+| DetectNet-COCO-Airplane    | coco-airplane            | 8 FPS       |
+| ped-100                    | pednet	                  | 7 FPS       |
+| multiped-500               | multiped                 | 7 FPS       |
+| facenet-120                | facenet                  | 15 FPS      |
 
 
 ## Run the Launched Object Detection Model
@@ -93,14 +93,14 @@ Within this loop:
 4. Send the encoded image to the Jetson server using the `send base64_img to socket to model with response` block. This block sends the image through the active WebSocket connection executing using a specific detection model.
 
    **Return Values**
-   * **List of detections (JSON objects)** → Successful inference.
+   * **List of detections in JSON format** → Successful inference.
    * **Empty list `[]`** → One or more parameters were invalid (e.g., wrong model ID, invalid image, missing connection).
    
 6. Display the result using the `draw detection` block. This block renders bounding boxes on top of the image using the detection list.
 
    **Behavior**
    * If the detection list is **non-empty**, bounding boxes are drawn.
-   * If the detection list is **empty**, the block does nothing (no error, just skipped)..
+   * If the detection list is **empty**, the block does nothing (no error, just skipped).
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/8194aae6-9105-4975-a5ec-d1cc84f8b2ee" alt="Run DetectNet Model" />
@@ -166,4 +166,3 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
-
