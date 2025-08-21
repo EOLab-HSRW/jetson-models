@@ -1,10 +1,8 @@
-<h1 align = "center">Jetson Model Manager X Snap! </h1>
-
 <p align="center">
   <img src="https://github.com/user-attachments/assets/c9056f44-5639-41bb-b2b1-2473cf0680e9" alt="Jetson X Snap!" />
 </p>
 
-## Deploying Deep Learning for Everyone
+## Deploying Deep Learning — For Everyone to Use
 
 This repository provides a Python-based model manager designed for running AI inference models on a Jetson device. It leverages NVIDIA's [Jetson Inference Library](https://github.com/dusty-nv/jetson-inference) to manage deep learning models efficiently. Additionally, the manager sets up a WebSocket server, enabling remote clients to interact with the models and send images for real-time inference.
 
@@ -110,7 +108,7 @@ Navigate to the project directory and install all required dependencies:
 pip install -r requirements.txt
 ```
 
-## Usage
+## Server Usage
 
 ### Configure the WebSocket Server
 
@@ -120,7 +118,7 @@ To configure and start the WebSocket server by running `main.py` with optional a
 python3 main.py --ip=127.0.0.1 --port=5000 --delete_datasets=False --debug=False
 ```
 
-#### Parameters
+### Parameters
 
 | Argument                     | Description                                                         | Default   |
 |:-----------------------------|:--------------------------------------------------------------------|:----------|
@@ -133,42 +131,36 @@ python3 main.py --ip=127.0.0.1 --port=5000 --delete_datasets=False --debug=False
 
 ## Inference with Snap!
 
-To use the full capabilities of the Model Manager, you'll need to download the [customs Snap! blocks!](https://github.com/EOLab-HSRW/jetson-models/tree/main/snap_blocks) These blocks are currently available in English and Spanish. 
+You can run inferences visually using Snap! and interact with all supported models through block-based programming.  
 
-### Setup Instruncions
+Follow the setup instructions below to get started.
 
-* **Download or clone the [Snap! GitHub Project](https://github.com/jmoenig/Snap)**
+### Setup Instructions
+
+1. **Download or clone the [Snap! GitHub Project](https://github.com/jmoenig/Snap)**
 
 ```bash
 git clone https://github.com/jmoenig/Snap.git
 ```
 
-*While Snap! can run from its official website, it cannot connect via WebSocket due to security restrictions. The online version uses HTTPS, which blocks non-secure WebSocket (ws://) connections.*
+*While Snap! can run from its [official website](https://snap.berkeley.edu/), it cannot connect via WebSocket because the online version uses HTTPS, which blocks non-secure WebSocket (ws://) connections.*
 
-* **Run Snap! Locally**
+2. **Run Snap! Locally**
 
-After downloading, open the `snap.html` file from the project folder in your browser.
+After downloading the project, open the snap.html file from the project folder in your browser.
 
-* **Import the Custom Blocks**
+3. **Import the Custom Blocks**
 
-Load the downloaded Snap! blocks into your local Snap! session.
+Download the [custom Snap! blocks](snap_blocks/) and load them into your local Snap! session.
+(Available in English and Spanish.)
 
 ### Supported Models and their Usage
 
 The system supports various pretrained deep learning models from Jetson Inference for tasks such as object detection, classification, pose estimation, and semantic segmentation. Each model can be launched and interacted with via Snap! using customized blocks.
 
-| Model Name          | Python                                                                                 |
-|:--------------------|:---------------------------------------------------------------------------------------|
-| Object Detection    | [detectnet](https://github.com/EOLab-HSRW/jetson-models/blob/main/models/detectnet.py) |
-| Image Recognition   | [imagenet](https://github.com/EOLab-HSRW/jetson-models/blob/main/models/imagenet.py)   |
-| Segmentation        | [segnet](https://github.com/EOLab-HSRW/jetson-models/blob/main/models/segnet.py)       |
-| Pose Estimation     | [posenet](https://github.com/EOLab-HSRW/jetson-models/blob/main/models/posenet.py)     |
-
-### Usage Guides
-
-* [Object Detection](https://github.com/EOLab-HSRW/jetson-models/blob/main/docs/usage_guide_detectnet.md)
-* [Image Recognition](https://github.com/EOLab-HSRW/jetson-models/blob/main/docs/usage_guide_imagenet.md)
-* [Pose Estimation](https://github.com/EOLab-HSRW/jetson-models/blob/main/docs/usage_guide_posenet.md)
-* [Segmentation](https://github.com/EOLab-HSRW/jetson-models/blob/main/docs/usage_guide_segnet.md)
-
-
+| Model Name          | Python Source                       | Usage Guide with Snap!                           | 
+|:--------------------|:------------------------------------|:------------------------------------------------ | 
+| Object Detection    | [detectnet.py](models/detectnet.py) | [DetectNet Guide](docs/usage_guide_detectnet.md) |
+| Image Recognition   | [imagenet.py](models/imagenet.py)   | [ImageNet Guide](docs/usage_guide_imagenet.md)   |
+| Segmentation        | [segnet.py](models/segnet.py)       | [SegNet Guide](docs/usage_guide_segnet.md)       |
+| Pose Estimation     | [posenet.py](models/posenet.py)     | [PoseNet Guide](docs/usage_guide_posenet.md)     |
