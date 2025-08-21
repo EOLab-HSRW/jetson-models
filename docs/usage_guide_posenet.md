@@ -1,7 +1,7 @@
 <h1 align = "center">PoseNet Usage Guide with Snap!</h1>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/c9056f44-5639-41bb-b2b1-2473cf0680e9" alt="Jetson X Snap!" />
+  <img src="/docs/images/posenet_demostration.gif" alt="PoseNet demonstration" height="70%" width="70%" />
 </p>
 
 ## Connect to the server
@@ -232,5 +232,6 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
+
 
 
