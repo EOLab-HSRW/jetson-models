@@ -51,13 +51,13 @@ The `send msg to socket with response` block expects a JSON object like this:
 
 *You can omit the fields that are not required if you're happy with the defaults. However, specifying them gives more control.*
 
-### Available Pose Estimation Variants
+### Available Pose Estimation Variants and Average Performance in Jetson Nano
 
-| Variant                       | variant_name Argument   |
-|:------------------------------|:------------------------|
-| Pose-ResNet18-Body (Default)  | resnet18-body           |
-| Pose-ResNet18-Hand            | resnet18-hand	          | 
-| Pose-DenseNet121-Body         | densenet121-body        |
+| Variant                       | variant_name Argument   | Jetson Nano |
+|:------------------------------|:------------------------|:------------|
+| Pose-ResNet18-Body (Default)  | resnet18-body           | 11 FPS      |
+| Pose-ResNet18-Hand            | resnet18-hand	          | 11 FPS      |
+| Pose-DenseNet121-Body         | densenet121-body        | 9 FPS      |
 
 
 ## Run the Launched Pose Estimation Model
@@ -76,7 +76,7 @@ Within this loop:
 4. Send the encoded image to the Jetson server using the `send base64_img to socket to model with response` block. This block sends the image through the active WebSocket connection executing using a specific posenet model.
 
    **Return Values**
-   * **List of poses (JSON objects)** → Successful inference.
+   * **List of poses** → Successful inference.
    * **Empty list `[]`** → One or more parameters were invalid (e.g., wrong model ID, invalid image, missing connection).
    
 6. Display the result using the `draw poses` block. This block renders the points and links connections on top of the image using poses list.
@@ -232,6 +232,3 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
-
-
-
