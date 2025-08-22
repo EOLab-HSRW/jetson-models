@@ -60,21 +60,27 @@ The `send msg to socket with response` block expects a JSON object like this:
 
 *You can omit the fields that are not required if you're happy with the defaults. However, specifying them gives more control.*
 
-### Available Segmentation Variants
+### Available Segmentation Variants and Average Performance in Jetson Nano
 
-| Dataset                                                             | variant_name Argument             |
-|:--------------------------------------------------------------------|:----------------------------------|
-| [Cityscapes](https://www.cityscapes-dataset.com/)                   | fcn-resnet18-cityscapes-512x256   |
-| [Cityscapes](https://www.cityscapes-dataset.com/)                   | fcn-resnet18-cityscapes-1024x512	| 
-| [Cityscapes](https://www.cityscapes-dataset.com/)                   | fcn-resnet18-cityscapes-2048x1024 |
-| [DeepScene](https://deepscene.cs.uni-freiburg.de/)                  | fcn-resnet18-deepscene-576x320    |
-| [DeepScene](https://deepscene.cs.uni-freiburg.de/)                  | fcn-resnet18-deepscene-864x480    |
-| [Multi-Human](https://lv-mhp.github.io/)                            | fcn-resnet18-mhp-512x320          | 
-| [Multi-Human](https://lv-mhp.github.io/)                            | fcn-resnet18-mhp-512x320          |
-| [Pascal VOC](https://github.com/paperswithcode/paperswithcode-data) | fcn-resnet18-voc-320x320	        |
-| [Pascal VOC](https://github.com/paperswithcode/paperswithcode-data) | fcn-resnet18-voc-512x320		      | 
-| [SUN RGB-D](https://rgbd.cs.princeton.edu/)                         | fcn-resnet18-sun-512x400          |
-| [SUN RGB-D](https://rgbd.cs.princeton.edu/)                         | inception-v4                      |
+| Dataset                                                             | variant_name Argument             | Jetson Nano |
+|:--------------------------------------------------------------------|:----------------------------------|:------------|
+| [Cityscapes](https://www.cityscapes-dataset.com/)                   | fcn-resnet18-cityscapes-512x256   | 5 FPS       |
+| [Cityscapes](https://www.cityscapes-dataset.com/)                   | fcn-resnet18-cityscapes-1024x512	| 3 FPS       |
+| [Cityscapes](https://www.cityscapes-dataset.com/)                   | fcn-resnet18-cityscapes-2048x1024 | 2 FPS       |
+| [DeepScene](https://deepscene.cs.uni-freiburg.de/)                  | fcn-resnet18-deepscene-576x320    | 5 FPS       |
+| [DeepScene](https://deepscene.cs.uni-freiburg.de/)                  | fcn-resnet18-deepscene-864x480    | 4 FPS       |
+| [Multi-Human](https://lv-mhp.github.io/)                            | fcn-resnet18-mhp-512x320          | 5 FPS       |
+| [Multi-Human](https://lv-mhp.github.io/)                            | fcn-resnet18-mhp-640x360          | 4 FPS       |
+| [Pascal VOC](https://github.com/paperswithcode/paperswithcode-data) | fcn-resnet18-voc-320x320	        | 5 FPS       |
+| [Pascal VOC](https://github.com/paperswithcode/paperswithcode-data) | fcn-resnet18-voc-512x320		      | 5 FPS       |
+| [SUN RGB-D](https://rgbd.cs.princeton.edu/)                         | fcn-resnet18-sun-512x400          | 4 FPS       |
+| [SUN RGB-D](https://rgbd.cs.princeton.edu/)                         | fcn-resnet18-sun-640x512          | 4 FPS       |
+
+***The relatively low FPS is primarily caused by the `get costume from base64` block inside the `draw segmentations` block. This block relies on an onload event that introduces a delay until the costume image is fully loaded before rendering. As a result, frame updates are bottlenecked, reducing the overall FPS. This behavior is a limitation of Snap!, since images cannot be loaded synchronously and faster alternatives.***
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/4e80ffce-56b3-46e5-b0b4-56cb303097a4" alt="SegNet FPS Limitation" />
+</p>
 
 ## Run the Launched Segmentation Model
 
@@ -92,8 +98,8 @@ Within this loop:
 4. Send the encoded image to the Jetson server using the `send base64_img to socket to model with response` block. This block sends the image through the active WebSocket connection executing using a specific segmentation model.
 
    **Return Values**
-   * **JSON with the segmented image and its segmentation information (e.g, ClassID, ClassLabel, PixelCount)** → Successful inference.
-   * **Empty list `[]`** → One or more parameters were invalid (e.g., wrong model ID, invalid image, missing connection).
+   * **JSON with the segmented image and its segmentation information** → Successful inference.
+   * **Empty list `[]`** → One or more parameters were invalid.
    
 6. Display the result using the `draw segmentations` block. This block show the segmentation image into the canvas using the segmentation list.
 
@@ -160,5 +166,6 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
+
 
 
