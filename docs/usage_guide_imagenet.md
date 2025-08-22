@@ -54,20 +54,20 @@ The `send msg to socket with response` block expects a JSON object like this:
 
 *You can omit optional fields if you're happy with the defaults. However, specifying them gives more control.*
 
-### Available Image Recognition Variants
+### Available Image Recognition Variants and Average Performance in Jetson Nano
 
-| Variant             | variant_name Argument   |
-|:--------------------|:------------------------|
-| AlexNet             | alexnet                 |
-| GoogleNet (Default) | googlenet	              | 
-| GoogleNet-12        | googlenet-12            |
-| ResNet-18           | resnet-18               |
-| ResNet-50           | resnet-50               |
-| ResNet-101          | resnet-101	            | 
-| ResNet-152          | resnet-152              |
-| VGG-16              | vgg-16	                |
-| VGG-19              | vgg-19		              | 
-| Inception-v4        | inception-v4            |
+| Variant             | variant_name Argument   | Jetson Nano |
+|:--------------------|:------------------------|:------------|
+| AlexNet             | alexnet                 | 28 FPS      |
+| GoogleNet (Default) | googlenet	              | 28 FPS      | 
+| GoogleNet-12        | googlenet-12            | 28 FPS      |
+| ResNet-18           | resnet-18               | 28 FPS      |
+| ResNet-50           | resnet-50               | 23 FPS      |
+| ResNet-101          | resnet-101	            | 15 FPS      |
+| ResNet-152          | resnet-152              | 11 FPS      |
+| VGG-16              | vgg-16	                | 10 FPS      |
+| VGG-19              | vgg-19		              | 9 FPS       |
+| Inception-v4        | inception-v4            | 9 FPS       |
 
 
 ## Run the Launched Object Detection Model
@@ -153,4 +153,5 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
+
 
