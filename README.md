@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/c9056f44-5639-41bb-b2b1-2473cf0680e9" alt="Jetson X Snap!" />
+  <img src="/docs/images/deep-vision-with-jetson-and-snap!-header.png" alt="Deep vision with Jetson and Snap!" />
 </p>
 
 ## Deploying Deep Learning — For Everyone to Use
@@ -7,6 +7,8 @@
 This repository provides a Python-based model manager designed for running AI inference models on a Jetson device. It leverages NVIDIA's [Jetson Inference Library](https://github.com/dusty-nv/jetson-inference) to manage deep learning models efficiently. Additionally, the manager sets up a WebSocket server, enabling remote clients to interact with the models and send images for real-time inference.
 
 The main objective is to facilitate model interaction through [Snap!](https://snap.berkeley.edu/), a block-based programming language for educational and demonstrative purposes, the manager also supports connectivity from any programming language that supports WebSocket communication.
+
+Supported DDN vision models include [`DetectNet`](docs/usage_guide_detectnet.md) for object detection, [`ImageNet`](docs/usage_guide_imagenet.md) for image classification, [`PoseNet`](docs/usage_guide_posenet.md) for pose estimation and [`SegNet`](docs/usage_guide_segnet.md) for semantic segmentation. Examples are provided for live streaming from a camera into Snap!.
 
 🔗 **Snap! to the `js` Extension Link:** [https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js](https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js)
 
