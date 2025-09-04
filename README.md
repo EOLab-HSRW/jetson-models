@@ -10,6 +10,12 @@ The main objective is to facilitate model interaction through [Snap!](https://sn
 
 🔗 **Snap! to the `js` Extension Link:** [https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js](https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js)
 
+🔗 **Pruebas de conocimiento preTest 5to B:** [Enlace](https://docs.google.com/forms/d/e/1FAIpQLSec76B3_7rMegAj_ptxsbGqMXJY9vsZeZF19iO0GA8QigUCbg/viewform?usp=header)
+
+🔗 **Pruebas de conocimiento posTest 5to B:** [Enlace](https://docs.google.com/forms/d/e/1FAIpQLSdp5bRcrpLyuO0i6UCrwxLf5TGHCtM8yHE73QqVWQsIlVoe4Q/viewform?usp=header)
+
+🔗 **Encuesta de funcionalidad 5to B:** [Enlace](https://docs.google.com/forms/d/e/1FAIpQLSdw1aE7ojKnWcKHoZk_pn780lpWEQSRoh0mGmSfyVoiomyYwA/viewform?usp=header)
+
 ---
 
 ## Installation and Setup
