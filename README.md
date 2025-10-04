@@ -12,11 +12,11 @@ Supported DDN vision models include [`DetectNet`](docs/usage_guide_detectnet.md)
 
 🔗 **Snap! to the `js` Extension Link:** [https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js](https://eolab-hsrw.github.io/jetson-models/snap_blocks/jetson.js)
 
-🔗 **Pruebas de conocimiento preTest 5to B:** [Enlace](https://docs.google.com/forms/d/e/1FAIpQLSec76B3_7rMegAj_ptxsbGqMXJY9vsZeZF19iO0GA8QigUCbg/viewform?usp=header)
+### Table of Contents
 
-🔗 **Pruebas de conocimiento posTest 5to B:** [Enlace](https://docs.google.com/forms/d/e/1FAIpQLSdp5bRcrpLyuO0i6UCrwxLf5TGHCtM8yHE73QqVWQsIlVoe4Q/viewform?usp=header)
-
-🔗 **Encuesta de funcionalidad 5to B:** [Enlace](https://docs.google.com/forms/d/e/1FAIpQLSdw1aE7ojKnWcKHoZk_pn780lpWEQSRoh0mGmSfyVoiomyYwA/viewform?usp=header)
+* [Installation and Setup](#installation-and-setup)
+* [Server Usage](#server-usage)
+* [Inference with Snap!](#inference-with-snap)
 
 ---
 
@@ -137,7 +137,7 @@ python3 main.py --ip=127.0.0.1 --port=5000 --delete_datasets=False --debug=False
 
 *All arguments are optional; the defaults will be used if they’re not provided.*
 
-## Inference with Snap!
+## Inference with Snap
 
 You can run inferences visually using Snap! and interact with all supported models through block-based programming.  
 
