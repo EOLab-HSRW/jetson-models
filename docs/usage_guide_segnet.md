@@ -1,8 +1,17 @@
 <h1 align = "center">SegNet Usage Guide with Snap!</h1>
 
+Semantic segmentation is a computer vision task that assigns a class label to every pixel in an image. The segmentation produces a dense map of per-pixel classifications. This allows detailed scene understanding, including both foreground objects and background context.
+
 <p align="center">
   <img src="/docs/images/segnet_demostration.gif" alt="SegNet demonstration" height="70%" width="70%" />
 </p>
+
+The SegNet model from the [Jetson Inference Library](https://github.com/dusty-nv/jetson-inference) takes a 2D image as input and outputs:
+
+* **Image Data:** The segmented image encoded in Base64 format.
+* **Segmentation Info:** Class IDs, labels, and pixel counts for each detected class.
+
+[segnet](../models/segnet.py) is available from Python, with [pre-trained semantic segmentation networks](#available-segmentation-variants-variants-and-average-performance-in-jetson-nano) optimized with TensorRT for real-time performance on Jetson devices. Models are provided for diverse environments such as urban scenes ([Cityscapes](https://www.cityscapes-dataset.com/)), forest trails ([DeepScene](https://deepscene.cs.uni-freiburg.de/)), indoor rooms ([SUN RGB-D](https://rgbd.cs.princeton.edu/)) and multi-human parsing ([Multi-Human](https://lv-mhp.github.io/)). The default model is FCN-ResNet18-VOC, trained on the [Pascal VOC dataset.](https://docs.ultralytics.com/datasets/detect/voc/)
 
 ## Connect to the server
 
@@ -166,6 +175,7 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
+
 
 
 
