@@ -1,8 +1,18 @@
 <h1 align = "center">ImageNet Usage Guide with Snap!</h1>
 
+Image classification is one of the fundamental tasks in computer vision. Instead of detecting multiple objects and their locations, classification networks predict the most likely class of the entire image. For example, given an input picture, the network outputs probabilities for categories such as dog, cat, car, airplane, and so on.
+
 <p align="center">
   <img src="/docs/images/imagenet_demostration.gif" alt="DetectNet demonstration" height="70%" width="70%" />
 </p>
+
+The imageNet model from the [Jetson Inference Library](https://github.com/dusty-nv/jetson-inference)  takes an image as input and produces:
+
+* **ClassID:** Numeric identifier of the predicted category
+* **ClassLabel:** Human-readable label (e.g., lab coat, dog, car)
+* **Confidence:** Probability score of the prediction
+
+[Imagenet](models/imagenet.py) is available to use from Python and supports a variety of [pre-trained image classification networks](#available-image-recognition-variants-and-average-performance-in-jetson-nano) optimized with TensorRT for real-time performance on Jetson devices. The default model is GoogLeNet. ImageNet is trained on the ILSVRC ImageNet dataset, which includes [1000 object classes.](https://github.com/dusty-nv/jetson-inference/blob/master/data/networks/ilsvrc12_synset_words.txt)
 
 ## Connect to the server
 
@@ -153,5 +163,6 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
+
 
 
