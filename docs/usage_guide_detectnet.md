@@ -6,7 +6,7 @@ Object detection goes beyond simple image classification. Instead of predicting 
   <img src="/docs/images/detectnet_demostration.gif" alt="DetectNet demonstration" height="70%" width="70%" />
 </p>
 
-The detectnet model from the [Jetson Inference Library](https://github.com/dusty-nv/jetson-inference) is designed for real-time object detection on NVIDIA Jetson devices. [detectnet](models/detectnet.py) is available to use from Python. It accepts an input image and outputs a list of detected objects, each with:
+The detectnet model from the [Jetson Inference Library](https://github.com/dusty-nv/jetson-inference) is designed for real-time object detection on NVIDIA Jetson devices. [detectnet](../models/detectnet.py) is available to use from Python. It accepts an input image and outputs a list of detected objects, each with:
 
 * **ClassID:** Numeric ID of the detected class
 * **ClassLabel:** Human-readable label (e.g., person)
@@ -177,4 +177,5 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
+
 
