@@ -1,8 +1,19 @@
 <h1 align = "center">DetectNet Usage Guide with Snap!</h1>
 
+Object detection goes beyond simple image classification. Instead of predicting just one label for the entire image, object detection networks are capable of finding and locating multiple objects per frame. They do this by producing a set of bounding boxes around each detected object, along with a class label (e.g., person, car, dog) and a confidence score.
+
 <p align="center">
   <img src="/docs/images/detectnet_demostration.gif" alt="DetectNet demonstration" height="70%" width="70%" />
 </p>
+
+The detectnet model from the [Jetson Inference Library](https://github.com/dusty-nv/jetson-inference) is designed for real-time object detection on NVIDIA Jetson devices. [detectnet](models/detectnet.py) is available to use from Python. It accepts an input image and outputs a list of detected objects, each with:
+
+* **ClassID:** Numeric ID of the detected class
+* **ClassLabel:** Human-readable label (e.g., person)
+* **Confidence:** Probability of the detection being correct
+* **BoundingBox:** Coordinates of the object’s location in the image
+
+DetectNet supports a variety of [pre-trained detection networks](#available-object-detection-variants-and-average-performance-in-jetson-nano) optimized with TensorRT for real-time performance on Jetson devices. The default is SSD-Mobilenet-v2, trained on the [MS COCO dataset](https://cocodataset.org/#home) with 91 object classes including people, animals, and household items.
 
 ## Connect to the server
 
@@ -166,3 +177,4 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
+
