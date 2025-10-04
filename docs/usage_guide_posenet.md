@@ -1,8 +1,20 @@
 <h1 align = "center">PoseNet Usage Guide with Snap!</h1>
 
+Pose estimation involves locating keypoints on the human body and connecting them into a skeletal structure. It has a variety of applications including gestures, AR/VR, HMI (human/machine interface), and posture/gait correction.
+
 <p align="center">
   <img src="/docs/images/posenet_demostration.gif" alt="PoseNet demonstration" height="70%" width="70%" />
 </p>
+
+The PoseNet model from the [Jetson Inference Library](https://github.com/dusty-nv/jetson-inference) accepts an image as input and produces a list of object poses. Each pose contains:
+
+* **Keypoints:** 2D coordinates (x, y) of detected body parts.
+* **Links:** Connections between keypoints that form the skeletal structure.
+* **Poses:** Multiple people can be detected per frame, each with its own set of keypoints and links.
+
+[posenet](../models/posenet.py) is available from Python and supports a variety of [pre-trained pose estimation networks](#available-pose-estimation-variants-and-average-performance-in-jetson-nano), optimized with TensorRT for real-time performance on Jetson devices. The default model is ResNet18-Body, which estimates 18 body keypoints.
+
+
 
 ## Connect to the server
 
@@ -232,3 +244,4 @@ It’s important to stop models after execution to free up system resources and 
 * **ID or List of IDs** → Successful stop operation.
 * `0` → No models were found that matched the given ID(s), invalid `model_id` type, or no models were running.
 * `-1` → Internal error (e.g., missing required JSON keys, exception while stopping).
+
