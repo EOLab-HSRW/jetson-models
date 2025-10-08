@@ -17,6 +17,7 @@ Supported DDN vision models include [`DetectNet`](docs/usage_guide_detectnet.md)
 * [Installation and Setup](#installation-and-setup)
 * [Server Usage](#server-usage)
 * [Inference with Snap!](#inference-with-snap)
+* [Create a Dataset](#create-a-dataset)
 
 ---
 
@@ -172,3 +173,12 @@ The system supports various pretrained deep learning models from Jetson Inferenc
 | Image Recognition   | [imagenet.py](models/imagenet.py)   | [ImageNet Guide](docs/usage_guide_imagenet.md)   |
 | Segmentation        | [segnet.py](models/segnet.py)       | [SegNet Guide](docs/usage_guide_segnet.md)       |
 | Pose Estimation     | [posenet.py](models/posenet.py)     | [PoseNet Guide](docs/usage_guide_posenet.md)     |
+
+## Create a Dataset
+
+The system also allows you to **create your own dataset** containing object examples for retraining a custom DetectNet or ImageNet model.
+
+To simplify this process, two dedicated Snap! projects have been developed. These projects enable you to submit images along with their labels and bounding boxes and all that is required for dataset generation.
+
+Follow the [**step-by-step dataset generation guide**](docs/dataset_generattion_guide.md) for **DetectNet** and **ImageNet** to learn how to create your own datasets.
+
