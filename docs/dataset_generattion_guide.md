@@ -1,12 +1,17 @@
 <h1 align = "center">Dataset Generation Guide with Snap!</h1>
 
-To create your own object detection or image classification models, the first step is to build a dataset containing the objects you want to train on.
+A **dataset** is a structured collection of labeled images used to train and evaluate deep learning models. Each image in the dataset is associated with a specific label or in the case of object detection, bounding boxes that define the location of objects within the image and their labels.
 
-Two dedicated Snap! projects are provided to make this process simple and visual. You can use it to collect, label, and organize images directly for [**DetectNet**](/snap_blocks/projects/detectnet_dataset_generator.xml) or [**ImageNet**](/snap_blocks/projects/imagenet_dataset_generator.xml) training.
+Creating a high-quality dataset is the **foundation for retraining or fine-tuning** models like **DetectNet** and **ImageNet.** By collecting and labeling your own images, you ensure the model learns to recognize the exact objects and scenarios relevant to your project
 
 <p align="center">
   <img src="/docs/images/dataset-generation-header.png" alt="Dataset Generation" height="90%" width="90%" />
 </p>
+
+To create your own object detection or image classification models, the first step is to build a dataset containing the objects you want to train on.
+
+Two dedicated Snap! projects are provided to make this process simple and visual. You can use it to collect, label, and organize images directly for [**DetectNet**](/snap_blocks/projects/detectnet_dataset_generator.xml) or [**ImageNet**](/snap_blocks/projects/imagenet_dataset_generator.xml) training.
+
 
 ### Table of Contents
 
