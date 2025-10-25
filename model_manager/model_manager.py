@@ -477,54 +477,67 @@ class ModelManager:
         
         start_time = time.time()
         start_dt = datetime.now()
-        execution_success  = 0
+        model_name = str(data['model_name']).lower()
         variant_name = "No variant"
+        execution_success  = 0
         response = -1
 
         try:
 
-            model_name = str(data['model_name']).lower()
+            # --- Validate input --- #
+            if not model_name:
+                print("[ERROR] Missing 'model_name' in request data.")
+                await websocket.send(json.dumps(-1))
+                return
 
+            # --- Unsupported base model --- #
             if model_name == "base_model": 
                 print("[WARN] base_model is not supported")
-                execution_success = 0
-                response = 0
-            else:
-                    
-                #Getting the model class
+                await websocket.send(json.dumps(-1))
+                return
+
+            # --- Load model Dynamically --- #
+            try:
+
                 model_module = importlib.import_module(f"models.{model_name}")
                 model_class = getattr(model_module, model_name)
-
-                # Instantiate a temporary object to call its info method
                 model_instance = model_class()
-                success = model_instance.launch(data)
 
-                if success:
-                    
-                    async with self.model_lock:
-                        model_id = self.set_model_id()
-                        self.running_models[model_id] = model_instance
-                    
-                    variant_name = model_instance.variant
-                    execution_success = 1
-                    response = model_id
-                    print(f"[INFO] Model: {model_name} launched successfully with the model_id: {model_id}")
-                else:
-                    response = -1
-            
+            except:
+                print(f"[ERROR] Failed to load model '{model_name}': {e}")
+                await websocket.send(json.dumps(-1))
+                return
+
+
+            # --- Launch the model --- #
+            success = model_instance.launch(data)
+
+            if not success:
+                print(f"[ERROR] Model '{model_name}' failed to launch.")
+                await websocket.send(json.dumps(-1))
+                return
+
+            # --- Register model --- #
+            async with self.model_lock:
+                model_id = self.set_model_id()
+                self.running_models[model_id] = model_instance
+
+            variant_name = model_instance.variant
+            execution_success = 1
+            response = model_id
+            print(f"[INFO] Model '{model_name}' launched successfully with the model_id: {model_id}")
+
+            # --- Send result --- #
             await websocket.send(json.dumps(response))
             
         except (ModuleNotFoundError, AttributeError):
             print(f"[ERROR] Model {model_name} is not supported or failed to load.")
-            response = -1
-            await websocket.send(json.dumps(response))
-            return         
+            await websocket.send(json.dumps(-1))     
 
         except Exception as e:
             print(f"[ERROR] {str(e)}")
-            response = -1
-            await websocket.send(json.dumps(response))
-            return
+            await websocket.send(json.dumps(-1))
+
         finally:
             if args.debug:
                 global ws_user_ip
@@ -566,42 +579,66 @@ class ModelManager:
         start_dt = datetime.now()
         execution_success  = 0
         response = -1
+        model_name = "No model"
+        variant_name = "No variant"
 
         try:
 
-            if len(self.running_models) == 0:
-                print("[WARN] No model is running...")
-                execution_success = 0
-                response = 0
-            else:
-                base64_img = data['image']
-                model_id = int(data['model_id'])
+            # --- Validate input --- #
+            if not self.running_models:
+                print("[ERROR] No model is currently running.")
+                await websocket.send(json.dumps(0))
+                return
 
-                if model_id in self.running_models and base64_img not in (None, '', 'null'):
-                    img_data = base64.b64decode(base64_img)
-                    img_pil = Image.open(io.BytesIO(img_data)).convert("RGB")
-                    img = np.array(img_pil)
-                    execution_success = 1
 
-                    async with self.model_lock:
-                        model = self.running_models.get(model_id)
+            model_id = int(data['model_id'])
+            base64_img = data['image']
 
-                    loop = asyncio.get_event_loop()
-                    response = await loop.run_in_executor(None, model.run, img)
+            if model_id is None or base64_img in (None, "", "null"):
+                print("[ERROR] Missing 'model_id' or 'image' in request data.")
+                await websocket.send(json.dumps(-1))
+                return
 
-                else:
-                    print(f"[WARN] No model is currently running with the model_id: {model_id}")
-                    execution_success = 0
-                    response = 0
+            # --- Retrieve model --- #
+            async with self.model_lock:
+                model = self.running_models.get(model_id)
 
+            if not model:
+                print(f"[WARN] No running model found with ID: {model_id}")
+                await websocket.send(json.dumps(0))
+                return
+
+            model_name = model.model_name
+            variant_name = model.variant
+
+            # --- Decode image --- #
+            try: 
+                img_data = base64.b64decode(base64_img)
+                img_pil = Image.open(io.BytesIO(img_data)).convert("RGB")
+                img = np.array(img_pil)
+            except Exception as decode_err:
+                print(f"[ERROR] Failed to decode image for model '{model_name}': {decode_err}")
+                await websocket.send(json.dumps(-1))
+                return
+
+            # --- Run model inference (off main loop) ---- #
+            loop = asyncio.get_event_loop()
+
+            try:
+                response = await loop.run_in_executor(None, model.run, img)
+                execution_success = 1
+                print(f"[INFO] Model '{model_name}' (ID: {model_id}) executed successfully.")
+            except Exception as inference_err:
+                print(f"[ERROR] Model '{model_name}' failed during execution: {inference_err}")
+                response = -1
+
+
+            # --- Send result ---#
             await websocket.send(json.dumps(response))
 
         except Exception as e:
-            execution_success = 0
-            response = -1
-            print(f"[ERROR] Error during model execution: {str(e)}")
-            await websocket.send(json.dumps(response))
-            return
+            print(f"[ERROR] Unexpected error during model execution: {str(e)}")
+            await websocket.send(json.dumps(-1))
 
         finally:
             if args.debug:
@@ -609,14 +646,6 @@ class ModelManager:
                 end_time = time.time()
                 end_dt = datetime.now()
                 duration_seconds = round(end_time - start_time, 3)
-
-                model_id = int(data.get("model_id", -1))
-                if model_id in self.running_models:
-                    model_name = self.running_models[model_id].model_name
-                    variant_name = self.running_models[model_id].variant
-                else:
-                    model_name = "No model"
-                    variant_name = "No variant"
 
                 log_data = {
                     "Command": data["command"],
