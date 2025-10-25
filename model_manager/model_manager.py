@@ -330,7 +330,7 @@ class ModelManager:
         fieldnames = [
             "Command", "Model_Name", "Variant_Name",
             "Start_Timestamp", "End_Timestamp", "Duration_Seconds",
-            "Execution_Success", "Outcome_Code", "User_IP"
+            "Execution_Success", "User_IP"
         ]
         while True:
             log_data = await self.log_queue.get()
@@ -478,7 +478,6 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success  = 0
-        outcome_code  = -1
         variant_name = "No variant"
         response = -1
 
@@ -489,7 +488,6 @@ class ModelManager:
             if model_name == "base_model": 
                 print("[WARN] base_model is not supported")
                 execution_success = 0
-                outcome_code = 0
                 response = 0
             else:
                     
@@ -509,11 +507,9 @@ class ModelManager:
                     
                     variant_name = model_instance.variant
                     execution_success = 1
-                    outcome_code = 1
                     response = model_id
                     print(f"[INFO] Model: {model_name} launched successfully with the model_id: {model_id}")
                 else:
-                    outcome_code = -1
                     response = -1
             
             await websocket.send(json.dumps(response))
@@ -521,14 +517,12 @@ class ModelManager:
         except (ModuleNotFoundError, AttributeError):
             print(f"[ERROR] Model {model_name} is not supported or failed to load.")
             response = -1
-            outcome_code = -1
             await websocket.send(json.dumps(response))
             return         
 
         except Exception as e:
             print(f"[ERROR] {str(e)}")
             response = -1
-            outcome_code = -1
             await websocket.send(json.dumps(response))
             return
         finally:
@@ -546,7 +540,6 @@ class ModelManager:
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
-                    "Outcome_Code": outcome_code,
                     "User_IP": ws_user_ip,
                 }
 
@@ -572,7 +565,6 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success  = 0
-        outcome_code  = -1
         response = -1
 
         try:
@@ -580,7 +572,6 @@ class ModelManager:
             if len(self.running_models) == 0:
                 print("[WARN] No model is running...")
                 execution_success = 0
-                outcome_code = 0
                 response = 0
             else:
                 base64_img = data['image']
@@ -591,7 +582,6 @@ class ModelManager:
                     img_pil = Image.open(io.BytesIO(img_data)).convert("RGB")
                     img = np.array(img_pil)
                     execution_success = 1
-                    outcome_code = 1
 
                     async with self.model_lock:
                         model = self.running_models.get(model_id)
@@ -602,14 +592,12 @@ class ModelManager:
                 else:
                     print(f"[WARN] No model is currently running with the model_id: {model_id}")
                     execution_success = 0
-                    outcome_code = 0
                     response = 0
 
             await websocket.send(json.dumps(response))
 
         except Exception as e:
             execution_success = 0
-            outcome_code = -1
             response = -1
             print(f"[ERROR] Error during model execution: {str(e)}")
             await websocket.send(json.dumps(response))
@@ -638,7 +626,6 @@ class ModelManager:
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
-                    "Outcome_Code": outcome_code,
                     "User_IP": ws_user_ip,
                 }
 
@@ -664,7 +651,6 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success  = 0
-        outcome_code  = -1
         response = -1
         stopped_models = []
         stopped_models_names = []
@@ -674,8 +660,7 @@ class ModelManager:
 
             if not self.running_models: 
                 print("[WARN] No model is running...")
-                execution_success = 0
-                outcome_code = 0
+                execution_success = 1
                 response = 0
             else:
 
@@ -691,7 +676,6 @@ class ModelManager:
                         self.running_models.clear()
                         print("[INFO] All the models have been stopped successfully")
                         execution_success = 1
-                        outcome_code = 1
                         response = stopped_models
 
                 elif isinstance(model_id, int):
@@ -700,7 +684,6 @@ class ModelManager:
                         if model_id in self.running_models:
                             model_name = self.running_models[model_id].model_name
                             execution_success = 1
-                            outcome_code = 1
                             response = model_id
                             stopped_models_names.append(self.running_models[model_id].model_name)
                             stopped_variants.append(self.running_models[model_id].variant)
@@ -710,13 +693,10 @@ class ModelManager:
                             print(f"[INFO] Model: {model_name} with the model_id: {model_id} has been stopped successfully")
                         else:
                             print(f"[WARN] There is no model with the model_id: {model_id}")
-                            execution_success = 0
-                            outcome_code = 0
-                            response = 0
+                            execution_success = 1
+                            response = model_id
 
                 elif isinstance(model_id, list):
-
-                    found_any = False
 
                     async with self.model_lock:
 
@@ -724,7 +704,6 @@ class ModelManager:
                             model_id = int(id)
 
                             if model_id in self.running_models:
-                                found_any = True
                                 model_name = self.running_models[model_id].model_name
                                 variant_name = self.running_models[model_id].variant
                                 stopped_models.append(model_id)
@@ -736,26 +715,19 @@ class ModelManager:
                             else:
                                 print(f"[INFO] There is no model with the model_id: {model_id}")
 
-                    if found_any:
-                        execution_success = 1
-                        outcome_code = 1
-                        response = stopped_models
-                    else:
-                        execution_success = 0
-                        outcome_code = 0
-                        response = 0
+                    execution_success = 1 
+                    response = stopped_models
 
                 else:
                     print(f"[ERROR] Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list.")
                     execution_success = 0
-                    outcome_code = 0
-                    response = 0
+                    response = -1
 
             await websocket.send(json.dumps(response))
+
         except Exception as e:
             print(f"[ERROR] {e}")
             execution_success = 0
-            outcome_code = -1
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -774,7 +746,6 @@ class ModelManager:
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
-                    "Outcome_Code": outcome_code,
                     "User_IP": ws_user_ip,
                 }
 
@@ -797,14 +768,12 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success  = 0
-        outcome_code  = -1
 
         try:
 
             if not self.running_models:
                 print("[WARN] No model is running...")
                 execution_success  = 0
-                outcome_code  = 0
                 response = 0
             else:
 
@@ -814,14 +783,12 @@ class ModelManager:
                     models = sorted(self.running_models.keys())
 
                 execution_success  = 1
-                outcome_code  = 1
                 response = models
 
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"[ERROR] {str(e)}")
             execution_success  = 0
-            outcome_code  = -1
             response = -1
             await websocket.send(json.dumps(response))
         finally:
@@ -839,7 +806,6 @@ class ModelManager:
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
-                    "Outcome_Code": outcome_code,
                     "User_IP": ws_user_ip,
                 }
 
@@ -860,7 +826,6 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success  = 0
-        outcome_code  = -1
         response = -1
 
         try:
@@ -882,14 +847,12 @@ class ModelManager:
                 models_info[model_name] = model_info[model_name]
 
             execution_success  = 1
-            outcome_code  = 1
             response = {"models": models_info}
 
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"[ERROR] {str(e)}")
             execution_success  = 0
-            outcome_code  = -1
             response = -1
             await websocket.send(json.dumps(response))
         finally:
@@ -907,7 +870,6 @@ class ModelManager:
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
-                    "Outcome_Code": outcome_code,
                     "User_IP": ws_user_ip,
                 }
 
@@ -928,7 +890,6 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success  = 0
-        outcome_code  = -1
         response = -1
 
         try:
@@ -936,7 +897,6 @@ class ModelManager:
             if not self.running_models:
                 print("[WARN] No model is running...")
                 execution_success  = 0
-                outcome_code  = 0
                 response = 0
             else:
 
@@ -949,14 +909,12 @@ class ModelManager:
                     }
 
                 execution_success  = 1
-                outcome_code  = 1
                 response = {"model_id": models}
 
             await websocket.send(json.dumps(response))
         except Exception as e:
             print(f"[ERROR] {str(e)}")
             execution_success  = 0
-            outcome_code  = -1
             response = -1
             await websocket.send(json.dumps(response))
 
@@ -975,7 +933,6 @@ class ModelManager:
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
-                    "Outcome_Code": outcome_code,
                     "User_IP": ws_user_ip,
                 }
 
@@ -1052,7 +1009,6 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success  = 0
-        outcome_code  = -1
         model_name = ""
 
         try:
@@ -1060,7 +1016,6 @@ class ModelManager:
             if "model_name" not in data:
                 print("[WARN] Required model_name key is missing in the JSON payload.")
                 execution_success  = 0
-                outcome_code  = 0
                 await websocket.send(json.dumps(0)) 
                 return            
 
@@ -1072,7 +1027,6 @@ class ModelManager:
             if not model_exists:
                 print(f"[ERROR] Model '{model_name}' not found.")
                 execution_success  = 0
-                outcome_code  = -1
                 await websocket.send(json.dumps(-1)) 
                 return
 
@@ -1081,7 +1035,6 @@ class ModelManager:
                 if "dataset_name" not in data or "class_label" not in data or "dataset" not in data:
                     print("[WARN] Required keys are missing in the JSON payload.")
                     execution_success  = 0
-                    outcome_code  = 0
                     await websocket.send(json.dumps(0)) 
                     return   
 
@@ -1163,7 +1116,6 @@ class ModelManager:
 
                 print(f"status: success image_id: {image_id}")
                 execution_success  = 1
-                outcome_code  = 1
                 await websocket.send(json.dumps(1))
 
             elif model_name == "imagenet":
@@ -1172,7 +1124,6 @@ class ModelManager:
                     if "dataset_name" not in data or "class_label" not in data or "dataset" not in data:
                         print("[WARN] Required keys are missing in the JSON payload.")
                         execution_success  = 0
-                        outcome_code  = 0
                         await websocket.send(json.dumps(0)) 
                         return 
                     
@@ -1207,7 +1158,6 @@ class ModelManager:
 
                     print(f"status: success image_id: {filename}")
                     execution_success  = 1
-                    outcome_code  = 1
                     await websocket.send(json.dumps(1))
                 
                 except Exception as e:
@@ -1217,7 +1167,6 @@ class ModelManager:
         except Exception as e:
             print(f"[ERROR] {str(e)}")
             execution_success  = 0
-            outcome_code  = -1
             await websocket.send(json.dumps(-1))    
         finally:
             if args.debug:
@@ -1234,7 +1183,6 @@ class ModelManager:
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
-                    "Outcome_Code": outcome_code,
                     "User_IP": ws_user_ip,
                 }
 
@@ -1283,7 +1231,6 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success  = 0
-        outcome_code  = -1
         model_name = ""
         new_variant_name = ""
 
@@ -1294,7 +1241,6 @@ class ModelManager:
             if "model_name" not in data:
                 print("[WARN] Required model_name key is missing in the JSON payload.")
                 execution_success  = 0
-                outcome_code  = 0
                 await websocket.send(json.dumps(0)) 
                 return            
 
@@ -1306,7 +1252,6 @@ class ModelManager:
             if not model_exists:
                 print(f"[ERROR] Model '{model_name}' not found.")
                 execution_success  = 0
-                outcome_code  = -1
                 await websocket.send(json.dumps(-1)) 
                 return
 
@@ -1317,7 +1262,6 @@ class ModelManager:
                     if key not in data:
                         print("[ERROR] Any required field is missing")
                         execution_success  = 0
-                        outcome_code  = 0
                         await websocket.send(json.dumps(0))
                         return
 
@@ -1328,7 +1272,6 @@ class ModelManager:
                 if os.path.exists(os.path.join(BASE_NETWORKS_DIR, new_variant_name)):
                     print(f"[ERROR] A model already exists with the name {new_variant_name}")
                     execution_success  = 0
-                    outcome_code  = 0
                     await websocket.send(json.dumps(0))
                     return
 
@@ -1371,7 +1314,6 @@ class ModelManager:
                 if not os.path.exists(dataset_path) or not os.path.exists(coco_json_path):
                     print(f"[ERROR] Dataset path {dataset_path} or JSON file {coco_json_path} does not exist")
                     execution_success  = 0
-                    outcome_code  = -1
                     delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
@@ -1391,7 +1333,6 @@ class ModelManager:
                 else:
                     print(f"[Error] Unsupported dataset type '{dataset_type}' provided.")
                     execution_success  = 0
-                    outcome_code  = -1
                     delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
@@ -1438,7 +1379,6 @@ class ModelManager:
                     if process.returncode != 0:
                         print(f"[ERROR] Training failed with exit code {process.returncode}")
                         execution_success  = 0
-                        outcome_code  = -1
                         delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                         await websocket.send(json.dumps(-1))
                         return
@@ -1448,7 +1388,6 @@ class ModelManager:
                 except Exception as e:
                     print(f"[ERROR] Unhandled training error: {str(e)}")
                     execution_success  = 0
-                    outcome_code  = -1
                     delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
@@ -1474,7 +1413,6 @@ class ModelManager:
                     if process.returncode != 0:
                         print(f"[ERROR] Export failed with exit code {process.returncode}")
                         execution_success  = 0
-                        outcome_code  = -1
                         delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                         await websocket.send(json.dumps(-1))
                         return
@@ -1484,7 +1422,6 @@ class ModelManager:
                 except Exception as e:
                     print(f"[ERROR] Unhandled export error: {str(e)}")
                     execution_success  = 0
-                    outcome_code  = -1
                     delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
@@ -1501,8 +1438,7 @@ class ModelManager:
                     print(f"[INFO] Renamed model to {new_model_name}")
                     print(f"[INFO] Renamed labels to {new_labels_name}")
 
-                execution_success  = 1
-                outcome_code  = 1    
+                execution_success  = 1 
 
                 await websocket.send(json.dumps(new_variant_name))
                 print("[INFO] Training is done!")
@@ -1583,7 +1519,6 @@ class ModelManager:
                     if process.returncode != 0:
                         print(f"[ERROR] Training failed with exit code {process.returncode}")
                         execution_success  = 0
-                        outcome_code  = -1
                         delete_dir(base_new_model_directory)
                         await websocket.send(json.dumps(-1))
                         return
@@ -1611,7 +1546,6 @@ class ModelManager:
                         if process.returncode != 0:
                             print(f"[ERROR] Export failed with exit code {process.returncode}")
                             execution_success  = 0
-                            outcome_code  = -1
                             delete_dir(base_new_model_directory)
                             await websocket.send(json.dumps(-1))
                             return
@@ -1621,7 +1555,6 @@ class ModelManager:
                     except Exception as e:
                         print(f"[ERROR] Unhandled export error: {str(e)}")
                         execution_success  = 0
-                        outcome_code  = -1
                         delete_dir(base_new_model_directory)
                         await websocket.send(json.dumps(-1))
                         return
@@ -1638,8 +1571,7 @@ class ModelManager:
                         print(f"[INFO] Renamed model to {new_model_name}")
                         print(f"[INFO] Renamed labels to {new_labels_name}")
 
-                    execution_success  = 1
-                    outcome_code  = 1    
+                    execution_success  = 1   
 
                     await websocket.send(json.dumps(new_variant_name))
                     print("[INFO] Training is done!")
@@ -1647,7 +1579,6 @@ class ModelManager:
                 except Exception as e:
                     print(f"[ERROR] Unhandled training error: {str(e)}")
                     execution_success  = 0
-                    outcome_code  = -1
                     delete_dir(base_new_model_directory)
                     await websocket.send(json.dumps(-1))
                     return
@@ -1655,7 +1586,6 @@ class ModelManager:
         except Exception as e:
             print(f"[ERROR] {str(e)}")
             execution_success  = 0
-            outcome_code  = -1
             await websocket.send(json.dumps(-1))
         finally:
             if args.debug:
@@ -1672,7 +1602,6 @@ class ModelManager:
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
-                    "Outcome_Code": outcome_code,
                     "User_IP": ws_user_ip,
                 }
 
@@ -1696,7 +1625,6 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success = 0
-        outcome_code = -1
         variant_name = ""
 
         try:
@@ -1705,7 +1633,6 @@ class ModelManager:
             if "variant_name" not in data:
                 print("[WARN] Any required field is missing")
                 execution_success = 0
-                outcome_code = 0
                 await websocket.send(json.dumps(0))
                 return
    
@@ -1731,25 +1658,21 @@ class ModelManager:
                 except ValueError:
                     # Skip files that don't follow the expected naming pattern
                     execution_success = 0
-                    outcome_code = -1
                     continue
 
             if best_checkpoint is None:
                 execution_success = 0
-                outcome_code = -1
                 await websocket.send(json.dumps(-1))
                 raise FileNotFoundError(f"No valid checkpoint with loss found in '{base_model_directory}'")
 
             print(f"[INFO] The path for the lowest loss checkpoint for model {variant_name} is: {best_checkpoint}")
             
             execution_success = 1
-            outcome_code = 1
             await websocket.send(json.dumps(best_checkpoint))
 
         except Exception as e:
             print(f"[ERROR] {str(e)}")
             execution_success  = 0
-            outcome_code  = -1
             await websocket.send(json.dumps(-1))
         finally:
             if args.debug:
@@ -1766,7 +1689,6 @@ class ModelManager:
                     "End_Timestamp": end_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "Duration_Seconds": duration_seconds,
                     "Execution_Success": execution_success,
-                    "Outcome_Code": outcome_code,
                     "User_IP": ws_user_ip,
                 }
 
