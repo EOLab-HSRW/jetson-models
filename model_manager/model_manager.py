@@ -16,13 +16,15 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from io import BytesIO
-from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
 from pycocotools.coco import COCO
-from utils.utils import delete_dir
 import xml.etree.ElementTree as ET
 from models.base_model import BaseModel
+
+#import utilitis
+import utils.utils as utils
+from utils.utils import delete_dir
 from utils.utils import BASE_NETWORKS_DIR
 from utils.utils import MODELS_DIR
 
@@ -132,7 +134,7 @@ class ModelManager:
         print(f"[INFO] Dataset processing completed successfully from client {websocket.remote_address}.")
         return data
 
-    def convert_coco_to_voc(self, coco: COCO, dataset_path: str, split_ratio=0.7) -> None:
+    def convert_coco_to_voc(self, coco: COCO, dataset_path: str, train_split=0.7) -> None:
         """
         Convert COCO JSON to Pascal VOC format.
         Splits dataset into 70% trainval and 30% test.
@@ -165,7 +167,7 @@ class ModelManager:
 
         # Shuffle and split 70% trainval / 30% test
         random.shuffle(image_ids)
-        split_idx = int(len(image_ids) * split_ratio)
+        split_idx = int(len(image_ids) * train_split)
         train_ids = image_ids[:split_idx]
         test_ids = image_ids[split_idx:]
 
@@ -1044,17 +1046,14 @@ class ModelManager:
 
             if "model_name" not in data:
                 print("[WARN] Required model_name key is missing in the JSON payload.")
-                execution_success  = 0
                 await websocket.send(json.dumps(0)) 
                 return            
 
             model_name = data["model_name"].lower()
-
             model_exists = any(model_name == file.stem.lower() for file in MODELS_DIR.glob("*.py"))
 
             if not model_exists:
                 print(f"[ERROR] Model '{model_name}' not found.")
-                execution_success  = 0
                 await websocket.send(json.dumps(-1)) 
                 return
 
@@ -1062,7 +1061,6 @@ class ModelManager:
                 
                 if "dataset_name" not in data or "class_label" not in data or "dataset" not in data:
                     print("[WARN] Required keys are missing in the JSON payload.")
-                    execution_success  = 0
                     await websocket.send(json.dumps(0)) 
                     return   
 
@@ -1072,7 +1070,7 @@ class ModelManager:
                 image_data = dataset_info["image"]
                 bboxes = dataset_info["BB"]
 
-                dataset_path = Path("datasets") / dataset_name
+                dataset_path = utils.base_Dataset_Dir / dataset_name
                 images_dir = dataset_path / "images"
                 dataset_file = dataset_path / (dataset_name + ".json")
 
@@ -1105,9 +1103,8 @@ class ModelManager:
                 file_name = f"img_{image_id}.jpg"
                 image_path = images_dir / file_name
 
-                # Decode and save the image
+                # Decode the image
                 img = Image.open(BytesIO(base64.b64decode(image_data)))
-                img.save(image_path)
                 width, height = img.size
 
                 annotations["images"].append({
@@ -1128,6 +1125,11 @@ class ModelManager:
                     bbox_height = y_max - y_min
                     area = bbox_width * bbox_height
 
+                    if x_min < 0 or y_min < 0 or x_max < 0 or y_max < 0:
+                        print(f"[ERROR] The bounding boxes cannot be negatives...")
+                        await websocket.send(json.dumps(-1)) 
+                        return
+
                     annotations["annotations"].append({
                         "id": next_ann_id,
                         "image_id": image_id,
@@ -1137,6 +1139,9 @@ class ModelManager:
                         "iscrowd": 0
                     })
                     next_ann_id += 1
+                
+                # Save image if everything is ok
+                img.save(image_path)
 
                 # Save updated annotations
                 with open(dataset_file, 'w') as f:
@@ -1159,6 +1164,7 @@ class ModelManager:
                     class_label  = data["class_label"]
                     subset       = data["subset"].lower()
                     if subset not in ("train", "val", "test"):
+                        print("[WARN] No valid subset. Expected: train, val or test")
                         await websocket.send(json.dumps(0))
                         return
 
@@ -1166,7 +1172,7 @@ class ModelManager:
                     img_bytes = base64.b64decode(image_b64)
 
                     # Create the target directory if it doesn’t exist
-                    base_dir    = Path("datasets") / dataset_name / subset / class_label
+                    base_dir    = utils.base_Dataset_Dir / dataset_name / subset / class_label
                     base_dir.mkdir(parents=True, exist_ok=True)               
                     
                     # Figure out the next image index in that folder
@@ -1194,7 +1200,6 @@ class ModelManager:
    
         except Exception as e:
             print(f"[ERROR] {str(e)}")
-            execution_success  = 0
             await websocket.send(json.dumps(-1))    
         finally:
             if args.debug:
@@ -1259,6 +1264,7 @@ class ModelManager:
         start_time = time.time()
         start_dt = datetime.now()
         execution_success  = 0
+        train_Split = 0.7
         model_name = ""
         new_variant_name = ""
 
@@ -1268,7 +1274,6 @@ class ModelManager:
 
             if "model_name" not in data:
                 print("[WARN] Required model_name key is missing in the JSON payload.")
-                execution_success  = 0
                 await websocket.send(json.dumps(0)) 
                 return            
 
@@ -1278,7 +1283,6 @@ class ModelManager:
 
             if not model_exists:
                 print(f"[ERROR] Model '{model_name}' not found.")
-                execution_success  = 0
                 await websocket.send(json.dumps(-1)) 
                 return
 
@@ -1288,7 +1292,6 @@ class ModelManager:
                 for key in ["dataset_type", "model_name", "dataset_name", "new_variant_name"]:
                     if key not in data:
                         print("[ERROR] Any required field is missing")
-                        execution_success  = 0
                         await websocket.send(json.dumps(0))
                         return
 
@@ -1297,8 +1300,7 @@ class ModelManager:
 
                 #Verify if there is already a model with the same name as the new variant
                 if os.path.exists(os.path.join(BASE_NETWORKS_DIR, new_variant_name)):
-                    print(f"[ERROR] A model already exists with the name {new_variant_name}")
-                    execution_success  = 0
+                    print(f"[WARN] A model already exists with the name {new_variant_name}")
                     await websocket.send(json.dumps(0))
                     return
 
@@ -1333,14 +1335,15 @@ class ModelManager:
                 if "use_cuda" in data: command_train += ["--use-cuda", str(data["use_cuda"])]
                 if "log_level" in data: command_train += ["--log-level", data["log_level"]]
                 if "pretrained_ssd" in data: command_train += ["--pretrained-ssd", data["pretrained_ssd"]]
+                if "dataset_dir" in data: utils.base_Dataset_Dir = data["dataset_dir"]
+                if "train_split" in data: train_Split = data["train_split"]
 
-                # Path to the prepared dataset (in the main folder so far)
-                dataset_path = os.path.join("datasets", dataset_name)
+                # Path to the prepared dataset
+                dataset_path = os.path.join(utils.base_Dataset_Dir, dataset_name)
                 coco_json_path = os.path.join(dataset_path, f"{dataset_name}.json")
 
                 if not os.path.exists(dataset_path) or not os.path.exists(coco_json_path):
                     print(f"[ERROR] Dataset path {dataset_path} or JSON file {coco_json_path} does not exist")
-                    execution_success  = 0
                     delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
@@ -1348,10 +1351,10 @@ class ModelManager:
                 # Load COCO dataset
                 coco = COCO(coco_json_path)
 
-                # **Convert dataset based on user selection**
+                # Convert dataset based on user selection
                 if dataset_type == "voc":
                     print("[INFO] Converting dataset to a VOC format...")
-                    self.convert_coco_to_voc(coco, dataset_path)
+                    self.convert_coco_to_voc(coco, dataset_path, train_split=train_Split)
                     dataset_path = os.path.join(dataset_path, "VOC")
                 elif dataset_type == "open_images":
                     print("[INFO] Converting dataset to a OpenImages format...")
@@ -1359,7 +1362,6 @@ class ModelManager:
                     dataset_path = os.path.join(dataset_path, "OpenImages")
                 else:
                     print(f"[Error] Unsupported dataset type '{dataset_type}' provided.")
-                    execution_success  = 0
                     delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
@@ -1368,7 +1370,7 @@ class ModelManager:
                 target_transform = MatchPrior(mobilenetv1_ssd_config.priors, mobilenetv1_ssd_config.center_variance,  mobilenetv1_ssd_config.size_variance, 0.5)
                 test_transform = TestTransform(mobilenetv1_ssd_config.image_size, mobilenetv1_ssd_config.image_mean, mobilenetv1_ssd_config.image_std)    
 
-                # **Load the converted dataset for training**
+                # Load the converted dataset for training and validation
                 if dataset_type == "voc":
                     print("[INFO] Loading datasets for training and validation...")
                     train_dataset = VOCDataset(dataset_path, transform=train_transform, 
@@ -1405,7 +1407,6 @@ class ModelManager:
 
                     if process.returncode != 0:
                         print(f"[ERROR] Training failed with exit code {process.returncode}")
-                        execution_success  = 0
                         delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                         await websocket.send(json.dumps(-1))
                         return
@@ -1414,7 +1415,6 @@ class ModelManager:
 
                 except Exception as e:
                     print(f"[ERROR] Unhandled training error: {str(e)}")
-                    execution_success  = 0
                     delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
@@ -1439,7 +1439,6 @@ class ModelManager:
 
                     if process.returncode != 0:
                         print(f"[ERROR] Export failed with exit code {process.returncode}")
-                        execution_success  = 0
                         delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                         await websocket.send(json.dumps(-1))
                         return
@@ -1448,7 +1447,6 @@ class ModelManager:
 
                 except Exception as e:
                     print(f"[ERROR] Unhandled export error: {str(e)}")
-                    execution_success  = 0
                     delete_dir(os.path.join(BASE_NETWORKS_DIR, new_variant_name))
                     await websocket.send(json.dumps(-1))
                     return
@@ -1465,7 +1463,7 @@ class ModelManager:
                     print(f"[INFO] Renamed model to {new_model_name}")
                     print(f"[INFO] Renamed labels to {new_labels_name}")
 
-                execution_success  = 1 
+                execution_success = 1 
 
                 await websocket.send(json.dumps(new_variant_name))
                 print("[INFO] Training is done!")
@@ -1481,8 +1479,9 @@ class ModelManager:
                 dataset_name = data["dataset_name"]
                 new_variant_name = data["new_variant_name"]
                 base_new_model_directory = os.path.join(BASE_NETWORKS_DIR, new_variant_name)
-                dataset_path = os.path.join("datasets", dataset_name)
-                arch = ""
+
+                if "dataset_dir" in data: utils.base_Dataset_Dir = data["dataset_dir"]
+                dataset_path = os.path.join(utils.base_Dataset_Dir, dataset_name)
 
                 if not os.path.exists(dataset_path):
                     print(f"[ERROR] Dataset folder '{dataset_path}' not found.")
@@ -1523,12 +1522,7 @@ class ModelManager:
                 if "resume" in data: command_train += ["--resume", str(data["resume"])] 
                 if "seed" in data: command_train += ["--seed", str(data["seed"])]
                 if "gpu" in data: command_train += ["--gpu", str(data["gpu"])]
-
-                if "arch" in data: 
-                    arch = str(data["arch"])
-                    command_train += ["--arch", arch]
-                else:
-                    arch = "resnet18"
+                if "arch" in data: command_train += ["--arch", str(data["arch"])]
 
                 try:
                     print("[INFO] Launching imagenet training subprocess...")
@@ -1545,7 +1539,6 @@ class ModelManager:
 
                     if process.returncode != 0:
                         print(f"[ERROR] Training failed with exit code {process.returncode}")
-                        execution_success  = 0
                         delete_dir(base_new_model_directory)
                         await websocket.send(json.dumps(-1))
                         return
@@ -1572,7 +1565,6 @@ class ModelManager:
 
                         if process.returncode != 0:
                             print(f"[ERROR] Export failed with exit code {process.returncode}")
-                            execution_success  = 0
                             delete_dir(base_new_model_directory)
                             await websocket.send(json.dumps(-1))
                             return
@@ -1581,12 +1573,11 @@ class ModelManager:
 
                     except Exception as e:
                         print(f"[ERROR] Unhandled export error: {str(e)}")
-                        execution_success  = 0
                         delete_dir(base_new_model_directory)
                         await websocket.send(json.dumps(-1))
                         return
 
-                    exported_model = os.path.join(BASE_NETWORKS_DIR, new_variant_name, arch + '.onnx')
+                    exported_model = os.path.join(BASE_NETWORKS_DIR, new_variant_name, str(data["arch"]) + '.onnx')
                     new_model_name = os.path.join(BASE_NETWORKS_DIR, new_variant_name, new_variant_name + ".onnx")
 
                     exported_labels = os.path.join(BASE_NETWORKS_DIR, new_variant_name, "labels.txt")
@@ -1605,14 +1596,12 @@ class ModelManager:
 
                 except Exception as e:
                     print(f"[ERROR] Unhandled training error: {str(e)}")
-                    execution_success  = 0
                     delete_dir(base_new_model_directory)
                     await websocket.send(json.dumps(-1))
                     return
 
         except Exception as e:
-            print(f"[ERROR] {str(e)}")
-            execution_success  = 0
+            print(f"[ERROR] During classification retraining: {str(e)}")
             await websocket.send(json.dumps(-1))
         finally:
             if args.debug:
@@ -1656,20 +1645,19 @@ class ModelManager:
 
         try:
 
-            # Validate required parameter
+            # Validate inputs
             if "variant_name" not in data:
                 print("[WARN] Any required field is missing")
-                execution_success = 0
                 await websocket.send(json.dumps(0))
                 return
    
             variant_name = data["variant_name"]
-            base_model_directory = os.path.join(BASE_NETWORKS_DIR, variant_name)
+            model_directory = os.path.join(BASE_NETWORKS_DIR, variant_name)
 
             best_loss = float('inf')
             best_checkpoint = None
 
-            for file in os.listdir(base_model_directory):
+            for file in os.listdir(model_directory):
                 if not file.endswith(".pth"):
                     continue
 
@@ -1680,17 +1668,15 @@ class ModelManager:
 
                     if loss < best_loss:
                         best_loss = loss
-                        best_checkpoint = os.path.join(base_model_directory, file)
+                        best_checkpoint = os.path.join(model_directory, file)
 
                 except ValueError:
                     # Skip files that don't follow the expected naming pattern
-                    execution_success = 0
                     continue
 
             if best_checkpoint is None:
-                execution_success = 0
                 await websocket.send(json.dumps(-1))
-                raise FileNotFoundError(f"No valid checkpoint with loss found in '{base_model_directory}'")
+                raise FileNotFoundError(f"No valid checkpoint with loss found in '{model_directory}'")
 
             print(f"[INFO] The path for the lowest loss checkpoint for model {variant_name} is: {best_checkpoint}")
             
@@ -1698,8 +1684,7 @@ class ModelManager:
             await websocket.send(json.dumps(best_checkpoint))
 
         except Exception as e:
-            print(f"[ERROR] {str(e)}")
-            execution_success  = 0
+            print(f"[ERROR] Getting the best retrained model checkpoint: {str(e)}")
             await websocket.send(json.dumps(-1))
         finally:
             if args.debug:
