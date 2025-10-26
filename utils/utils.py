@@ -6,8 +6,12 @@ from pathlib import Path
 from typing import Dict, Any
 from collections.abc import Sequence, Mapping, Set
 
+#Constants
+MODELS_DIR = Path("models")
 BASE_NETWORKS_DIR = "/usr/local/bin/networks" 
-MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
+
+#Variables
+base_Dataset_Dir = Path("datasets")
 
 def create_option(typ: type, default: object, help="", options=[]) -> dict:
 
