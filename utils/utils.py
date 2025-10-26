@@ -2,10 +2,12 @@ import os
 import shutil
 import numpy as np
 import jetson_utils
+from pathlib import Path
 from typing import Dict, Any
 from collections.abc import Sequence, Mapping, Set
 
 BASE_NETWORKS_DIR = "/usr/local/bin/networks" 
+MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 
 def create_option(typ: type, default: object, help="", options=[]) -> dict:
 
