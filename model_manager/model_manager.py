@@ -24,6 +24,7 @@ from utils.utils import delete_dir
 import xml.etree.ElementTree as ET
 from models.base_model import BaseModel
 from utils.utils import BASE_NETWORKS_DIR
+from utils.utils import MODELS_DIR
 
 # Dynamically added the submodule path
 sys.path.append(os.path.abspath("vendor/pytorch-ssd"))
@@ -681,84 +682,90 @@ class ModelManager:
         start_dt = datetime.now()
         execution_success  = 0
         response = -1
-        stopped_models = []
-        stopped_models_names = []
-        stopped_variants = []
+        stopped_models: list[int] = []
+        stopped_models_names: list[str] = []
+        stopped_variants: list[str] = []
         
         try:
 
-            if not self.running_models: 
-                print("[WARN] No model is running...")
-                execution_success = 1
-                response = 0
-            else:
+            # --- Validate input --- #
+            if not self.running_models:
+                print("[WARN] No model is currently running")
+                await websocket.send(json.dumps(0))
+                return
 
-                model_id = data['model_id']
+            model_id = data['model_id']
 
+            if model_id is None:
+                print("[ERROR] Missing 'model_id' in request data")
+                await websocket.send(json.dumps(-1))
+                return
+
+            async with self.model_lock:
+
+                # --- Stop all models by "all" instruction --- #
                 if isinstance(model_id, str) and model_id.lower() == "all":
-                    async with self.model_lock:
-                        for id in self.running_models:
-                            stopped_models.append(id)
-                            stopped_models_names.append(self.running_models[id].model_name)
-                            stopped_variants.append(self.running_models[id].variant)
-                            self.running_models[id].stop()
-                        self.running_models.clear()
-                        print("[INFO] All the models have been stopped successfully")
-                        execution_success = 1
-                        response = stopped_models
+                    for id in self.running_models:
+                        stopped_models.append(id)
+                        stopped_models_names.append(self.running_models[id].model_name)
+                        stopped_variants.append(self.running_models[id].variant)
+                        self.running_models[id].stop()
+                    self.running_models.clear()
+                    execution_success = 1
+                    response = stopped_models 
+                    print("[INFO] All the models have been stopped successfully")
 
+                # --- Stop by a single ID ---#
                 elif isinstance(model_id, int):
-                    model_id = int(model_id)
-                    async with self.model_lock:
-                        if model_id in self.running_models:
-                            model_name = self.running_models[model_id].model_name
-                            execution_success = 1
-                            response = model_id
-                            stopped_models_names.append(self.running_models[model_id].model_name)
-                            stopped_variants.append(self.running_models[model_id].variant)
-                            stopped_models.append(model_id)
-                            self.running_models[model_id].stop()
-                            del self.running_models[model_id]
-                            print(f"[INFO] Model: {model_name} with the model_id: {model_id} has been stopped successfully")
-                        else:
-                            print(f"[WARN] There is no model with the model_id: {model_id}")
-                            execution_success = 1
-                            response = model_id
+                    if model_id not in self.running_models:
+                        print(f"[WARN] No model found with ID: {model_id}")
+                        await websocket.send(json.dumps(0))
+                        return
 
+                    execution_success = 1
+                    response = model_id
+                    model_name = self.running_models[model_id].model_name
+                    variant_name = self.running_models[model_id].variant
+                    stopped_models_names.append(model_name)
+                    stopped_variants.append(self.running_models[model_id].variant)
+                    stopped_models.append(model_id)
+                    self.running_models[model_id].stop()
+                    del self.running_models[model_id]
+                    print(f"[INFO] Model: {model_name} with variant: {variant_name} and with model_id: {model_id} has been stopped successfully")
+
+
+                # --- Stop by a list of IDs --- #
                 elif isinstance(model_id, list):
 
-                    async with self.model_lock:
+                    models_ids = [int(mid) for mid in model_id]
 
-                        for id in model_id:
-                            model_id = int(id)
+                    for model_id in models_ids:
 
-                            if model_id in self.running_models:
-                                model_name = self.running_models[model_id].model_name
-                                variant_name = self.running_models[model_id].variant
-                                stopped_models.append(model_id)
-                                stopped_models_names.append(model_name)
-                                stopped_variants.append(variant_name)
-                                self.running_models[model_id].stop()
-                                del self.running_models[model_id]
-                                print(f"[INFO] Model: {model_name} with variant: {variant_name} and with model_id: {model_id} has been stopped successfully")
-                            else:
-                                print(f"[INFO] There is no model with the model_id: {model_id}")
+                        if model_id in self.running_models:
+                            model_name = self.running_models[model_id].model_name
+                            variant_name = self.running_models[model_id].variant
+                            stopped_models.append(model_id)
+                            stopped_models_names.append(self.running_models[model_id].model_name)
+                            stopped_variants.append(variant_name)
+                            self.running_models[model_id].stop()
+                            del self.running_models[model_id]
+                            print(f"[INFO] Model: {model_name} with variant: {variant_name} and with model_id: {model_id} has been stopped successfully")
+                        else:
+                            stopped_models.append(model_id)
+                            print(f"[INFO] There is no model with the model_id: {model_id}")
 
                     execution_success = 1 
                     response = stopped_models
 
                 else:
                     print(f"[ERROR] Invalid model_id type: {type(model_id).__name__}. Expected str, int, or list.")
-                    execution_success = 0
                     response = -1
 
             await websocket.send(json.dumps(response))
 
         except Exception as e:
-            print(f"[ERROR] {e}")
-            execution_success = 0
-            response = -1
-            await websocket.send(json.dumps(response))
+            print(f"[ERROR] While stopping model(s): {e}")
+            await websocket.send(json.dumps(-1))
 
         finally:
             if args.debug:
@@ -796,30 +803,28 @@ class ModelManager:
 
         start_time = time.time()
         start_dt = datetime.now()
+        model_ids: list[int] = []
         execution_success  = 0
 
         try:
 
+            # --- Validate input --- #
             if not self.running_models:
                 print("[WARN] No model is running...")
-                execution_success  = 0
-                response = 0
-            else:
+                await websocket.send(json.dumps(-1))
+                return
 
-                models = []
+            # --- Get running model IDs --- #
+            async with self.model_lock:
+                model_ids = sorted(self.running_models.keys())
+            
+            execution_success = 1
+            await websocket.send(json.dumps(model_ids))
 
-                async with self.model_lock:
-                    models = sorted(self.running_models.keys())
-
-                execution_success  = 1
-                response = models
-
-            await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"[ERROR] {str(e)}")
-            execution_success  = 0
-            response = -1
-            await websocket.send(json.dumps(response))
+            print(f"[ERROR] While getting models IDs: {str(e)}")
+            await websocket.send(json.dumps(-1))
+
         finally:
            if args.debug:
                 global ws_user_ip
@@ -854,15 +859,13 @@ class ModelManager:
 
         start_time = time.time()
         start_dt = datetime.now()
+        models_info = {} 
         execution_success  = 0
         response = -1
 
         try:
 
-            models_info = {}
-            models_dir = Path(__file__).resolve().parent.parent / "models"
-
-            for file in models_dir.glob("*.py"):
+            for file in MODELS_DIR.glob("*.py"):
 
                 model_name = str(file.stem).lower()
                 if model_name == "base_model": 
@@ -877,13 +880,12 @@ class ModelManager:
 
             execution_success  = 1
             response = {"models": models_info}
+            await websocket.send(json.dumps(response))
 
-            await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"[ERROR] {str(e)}")
-            execution_success  = 0
-            response = -1
-            await websocket.send(json.dumps(response))
+            print(f"[ERROR] While getting available system models: {str(e)}")
+            await websocket.send(json.dumps(-1))
+
         finally:
             if args.debug:
                 global ws_user_ip
@@ -918,34 +920,32 @@ class ModelManager:
 
         start_time = time.time()
         start_dt = datetime.now()
+        models = {}
         execution_success  = 0
         response = -1
 
         try:
-
+            
+            # --- Validate inputs --- #
             if not self.running_models:
                 print("[WARN] No model is running...")
-                execution_success  = 0
-                response = 0
-            else:
+                await websocket.send(json.dumps(-1))
+                return
 
-                models = {}
 
-                for id in sorted(self.running_models.keys()):
-                    models[id] = {
-                        "model_name": self.running_models[id].model_name,
-                        "variant": self.running_models[id].variant
+            for model_id in sorted(self.running_models.keys()):
+                models[model_id] = {
+                        "model_name": self.running_models[model_id].model_name,
+                        "variant": self.running_models[model_id].variant
                     }
 
-                execution_success  = 1
-                response = {"model_id": models}
+            execution_success = 1
+            response = {"model_id": models}
+            await websocket.send(json.dumps(response))
 
-            await websocket.send(json.dumps(response))
         except Exception as e:
-            print(f"[ERROR] {str(e)}")
-            execution_success  = 0
-            response = -1
-            await websocket.send(json.dumps(response))
+            print(f"[ERROR] While getting running model details: {str(e)}")
+            await websocket.send(json.dumps(-1))
 
         finally:
             if args.debug:
@@ -1050,8 +1050,7 @@ class ModelManager:
 
             model_name = data["model_name"].lower()
 
-            models_dir = Path(__file__).resolve().parent.parent / "models"
-            model_exists = any(model_name == file.stem.lower() for file in models_dir.glob("*.py"))
+            model_exists = any(model_name == file.stem.lower() for file in MODELS_DIR.glob("*.py"))
 
             if not model_exists:
                 print(f"[ERROR] Model '{model_name}' not found.")
@@ -1275,8 +1274,7 @@ class ModelManager:
 
             model_name = data["model_name"].lower()
 
-            models_dir = Path(__file__).resolve().parent.parent / "models"
-            model_exists = any(model_name == file.stem.lower() for file in models_dir.glob("*.py"))
+            model_exists = any(model_name == file.stem.lower() for file in MODELS_DIR.glob("*.py"))
 
             if not model_exists:
                 print(f"[ERROR] Model '{model_name}' not found.")
