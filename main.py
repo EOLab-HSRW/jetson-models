@@ -2,6 +2,7 @@ import shutil
 import asyncio
 import argparse
 from pathlib import Path
+from utils.utils import base_Dataset_Dir
 from  model_manager.model_manager import ModelManager
 
 parser = argparse.ArgumentParser(
@@ -34,8 +35,7 @@ if __name__ == '__main__':
         loop = asyncio.get_event_loop()
         loop.run_until_complete(main())
     except KeyboardInterrupt:
-        dataset_path = Path("datasets")
-        if args.delete_datasets and Path(dataset_path).is_dir():
-            shutil.rmtree(dataset_path)
+        if args.delete_datasets and Path(base_Dataset_Dir).is_dir():
+            shutil.rmtree(base_Dataset_Dir)
             print('\nDataset folder and its content removed')
         print("\nKeyboardInterrupt: Server shutdown.")
